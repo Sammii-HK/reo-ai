@@ -22,7 +22,8 @@
     "@prisma/client": "^5.19.0",
     "zod": "^3.23.8",
     "jsonwebtoken": "^9.0.2",
-    "@supabase/supabase-js": "^2.39.0"
+    "@supabase/supabase-js": "^2.39.0",
+    "@getbrevo/brevo": "^1.0.0"
   },
   "devDependencies": {
     "@types/node": "^20",

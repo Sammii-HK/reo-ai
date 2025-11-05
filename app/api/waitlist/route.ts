@@ -32,6 +32,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // TODO: Also save to database (Waitlist table) when backend is ready
+    // This will be done via backend API call or sync script
+
     return NextResponse.json(
       { message: "Successfully added to waitlist" },
       { status: 200 }

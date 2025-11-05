@@ -254,3 +254,21 @@ model Metric {
   @@index([userId, metricType, periodStart])
   @@map("metrics")
 }
+
+model Waitlist {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  inviteCode  String?  @unique
+  status      String   @default("pending") // pending | invited | signed_up | expired
+  invitedAt   DateTime?
+  signedUpAt  DateTime?
+  source      String   @default("landing_page") // landing_page | manual | import
+  metadata    Json?    // Store MailerLite ID, etc.
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([email])
+  @@index([inviteCode])
+  @@index([status])
+  @@map("waitlist")
+}
