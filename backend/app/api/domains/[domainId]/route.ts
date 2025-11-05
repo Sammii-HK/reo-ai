@@ -4,6 +4,16 @@ import { prisma } from '@/lib/prisma'
 
 async function getDomainDataHandler(req: NextRequest, userId: string) {
   try {
+    // Ensure user exists first
+    await prisma.user.upsert({
+      where: { id: userId },
+      update: {},
+      create: {
+        id: userId,
+        email: '',
+      },
+    })
+
     // Extract domainId from URL path
     const url = new URL(req.url)
     const pathSegments = url.pathname.split('/')

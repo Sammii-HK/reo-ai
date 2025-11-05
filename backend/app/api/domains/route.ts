@@ -13,6 +13,16 @@ const createDomainSchema = z.object({
 
 async function getDomainsHandler(req: NextRequest, userId: string) {
   try {
+    // Ensure user exists first
+    await prisma.user.upsert({
+      where: { id: userId },
+      update: {},
+      create: {
+        id: userId,
+        email: '',
+      },
+    })
+
     const domains = await prisma.domain.findMany({
       where: { userId },
       orderBy: { order: 'asc' },

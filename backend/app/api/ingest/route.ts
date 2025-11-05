@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withAuth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parseInput } from '@/lib/nlu-parser'
+import { createApiSupabaseClient } from '@/lib/supabase'
 import { z } from 'zod'
 
 const ingestSchema = z.object({
@@ -15,6 +16,25 @@ async function ingestHandler(req: NextRequest, userId: string) {
   try {
     const body = await req.json()
     const { text, source } = ingestSchema.parse(body)
+
+    // Ensure user exists in database (upsert)
+    // This handles cases where user signed up directly with Supabase but User record wasn't created
+    // Get user email from Supabase if available
+    const supabase = createApiSupabaseClient()
+    const { data: { user: supabaseUser } } = await supabase.auth.getUser(
+      req.headers.get('authorization')?.replace('Bearer ', '') || ''
+    )
+    
+    await prisma.user.upsert({
+      where: { id: userId },
+      update: {
+        email: supabaseUser?.email || undefined, // Update email if available
+      },
+      create: {
+        id: userId,
+        email: supabaseUser?.email || '',
+      },
+    })
 
     // Get user's existing domains for smart suggestions
     const userDomains = await prisma.domain.findMany({

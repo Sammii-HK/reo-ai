@@ -57,6 +57,25 @@ export async function verifyAuth(request: NextRequest) {
       email: user.email,
     })
 
+    // Ensure user exists in our database (upsert)
+    // This handles cases where user signed up directly with Supabase
+    try {
+      const { prisma } = await import('@/lib/prisma')
+      await prisma.user.upsert({
+        where: { id: user.id },
+        update: {
+          email: user.email || undefined, // Update email if it changed
+        },
+        create: {
+          id: user.id,
+          email: user.email || '',
+        },
+      })
+    } catch (dbError: any) {
+      console.error('⚠️ Failed to upsert user in database:', dbError)
+      // Continue anyway - user is authenticated, we'll create record on first event
+    }
+
     return {
       error: null,
       user,

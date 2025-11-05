@@ -4,6 +4,16 @@ import { prisma } from '@/lib/prisma'
 
 async function getMetricsHandler(req: NextRequest, userId: string) {
   try {
+    // Ensure user exists first
+    await prisma.user.upsert({
+      where: { id: userId },
+      update: {},
+      create: {
+        id: userId,
+        email: '',
+      },
+    })
+
     const { searchParams } = new URL(req.url)
     const domain = searchParams.get('domain') // Optional filter
 
