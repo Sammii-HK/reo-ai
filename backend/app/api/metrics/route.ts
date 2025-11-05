@@ -30,81 +30,97 @@ async function getMetricsHandler(req: NextRequest, userId: string) {
 
     // Water metrics
     if (!domain || domain === 'WELLNESS') {
-      const waterLogs = await prisma.wellnessLog.findMany({
-        where: {
-          userId,
-          kind: 'WATER',
-          ts: { gte: startOfWeek },
-        },
-      })
+      try {
+        const waterLogs = await prisma.wellnessLog.findMany({
+          where: {
+            userId,
+            kind: 'WATER',
+            ts: { gte: startOfWeek },
+          },
+        })
 
-      const weeklyWater = waterLogs.reduce((sum, log) => sum + (log.value || 0), 0)
+        const weeklyWater = waterLogs.reduce((sum, log) => sum + (log.value || 0), 0)
 
-      metrics.push({
-        domain: 'WELLNESS',
-        metricType: 'water_total',
-        value: weeklyWater,
-        period: 'week',
-        label: 'Water (this week)',
-        unit: 'cups',
-      })
+        metrics.push({
+          domain: 'WELLNESS',
+          metricType: 'water_total',
+          value: weeklyWater,
+          period: 'week',
+          label: 'Water (this week)',
+          unit: 'cups',
+        })
+      } catch (err) {
+        console.error('Error fetching water logs:', err)
+      }
     }
 
     // Workout metrics
     if (!domain || domain === 'WORKOUT') {
-      const workoutSets = await prisma.workoutSet.findMany({
-        where: {
-          userId,
-          ts: { gte: startOfWeek },
-        },
-      })
+      try {
+        const workoutSets = await prisma.workoutSet.findMany({
+          where: {
+            userId,
+            ts: { gte: startOfWeek },
+          },
+        })
 
-      metrics.push({
-        domain: 'WORKOUT',
-        metricType: 'workouts_count',
-        value: workoutSets.length,
-        period: 'week',
-        label: 'Workouts (this week)',
-        unit: 'count',
-      })
+        metrics.push({
+          domain: 'WORKOUT',
+          metricType: 'workouts_count',
+          value: workoutSets.length,
+          period: 'week',
+          label: 'Workouts (this week)',
+          unit: 'count',
+        })
+      } catch (err) {
+        console.error('Error fetching workout sets:', err)
+      }
     }
 
     // Habit metrics
     if (!domain || domain === 'HABIT') {
-      const habitLogs = await prisma.habitLog.findMany({
-        where: {
-          userId,
-          ts: { gte: startOfWeek },
-        },
-      })
+      try {
+        const habitLogs = await prisma.habitLog.findMany({
+          where: {
+            userId,
+            ts: { gte: startOfWeek },
+          },
+        })
 
-      metrics.push({
-        domain: 'HABIT',
-        metricType: 'habits_completed',
-        value: habitLogs.length,
-        period: 'week',
-        label: 'Habits completed (this week)',
-        unit: 'count',
-      })
+        metrics.push({
+          domain: 'HABIT',
+          metricType: 'habits_completed',
+          value: habitLogs.length,
+          period: 'week',
+          label: 'Habits completed (this week)',
+          unit: 'count',
+        })
+      } catch (err) {
+        console.error('Error fetching habit logs:', err)
+      }
     }
 
     // Job application metrics
     if (!domain || domain === 'JOBS') {
-      const jobApps = await prisma.jobApplication.findMany({
-        where: {
-          userId,
-          createdAt: { gte: startOfMonth },
-        },
-      })
+      try {
+        const jobApps = await prisma.jobApplication.findMany({
+          where: {
+            userId,
+            createdAt: { gte: startOfMonth },
+          },
+        })
 
-      metrics.push({
-        domain: 'JOBS',
-        metricType: 'jobs_applied',
-        value: jobApps.length,
-        period: 'month',
-        label: 'Job applications (this month)',
-        unit: 'count',
-      })
+        metrics.push({
+          domain: 'JOBS',
+          metricType: 'jobs_applied',
+          value: jobApps.length,
+          period: 'month',
+          label: 'Job applications (this month)',
+          unit: 'count',
+        })
+      } catch (err) {
+        console.error('Error fetching job applications:', err)
+      }
     }
 
     return NextResponse.json({ metrics })

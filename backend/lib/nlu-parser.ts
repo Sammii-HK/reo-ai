@@ -61,6 +61,8 @@ export function parseWithHeuristics(text: string): ParsedEvent | null {
     /([a-z]+)\s+(\d+)x(\d+(?:\.\d+)?)\s*(kg|lbs?|lb)?/i,
     // "5 squats at 100kg"
     /(\d+)\s+([a-z]+)\s+(?:at|@|with)\s+(\d+(?:\.\d+)?)\s*(kg|lbs?|lb)/i,
+    // "50 russian dead lifts" or "30 squats" - just reps, no weight
+    /(\d+)\s+([a-z\s]+?)\s*(?:deadlift|dead\s+lift|squat|bench|press|lunge|curl|extension|row|pull|push|fly|raise|crunch|sit-up|push-up|pull-up)/i,
     // "ran 5km" or "ran for 30 minutes"
     /(?:ran|run|running)\s+(?:for\s+)?(\d+)\s*(?:km|kilometers?|miles?|minutes?|min|hours?|hrs?)/i,
   ]
@@ -89,16 +91,36 @@ export function parseWithHeuristics(text: string): ParsedEvent | null {
       }
       
       // Weight training patterns
-      const reps = parseInt(match[1] || match[2])
-      const exercise = (match[2] || match[1] || '').trim()
-      const weight = parseFloat(match[3] || match[2])
+      let reps: number | undefined
+      let exercise: string | undefined
+      let weight: number = 0
       const unit = lower.includes('kg') ? 'kg' : 'lbs'
       
-      if (exercise && reps > 0 && weight > 0) {
+      // Handle "50 russian dead lifts" pattern - just reps, no weight
+      const repsOnlyMatch = lower.match(/(\d+)\s+([a-z\s]+?)\s*(?:deadlift|dead\s+lift|squat|bench|press|lunge|curl|extension|row|pull|push|fly|raise|crunch|sit-up|push-up|pull-up)/i)
+      if (repsOnlyMatch && !lower.match(/at|with|@|\d+kg|\d+lbs/i)) {
+        reps = parseInt(repsOnlyMatch[1])
+        exercise = repsOnlyMatch[2].trim()
+        // Extract exercise name from the full text
+        const exerciseMatch = lower.match(/(?:russian|sumo|conventional|bulgarian)?\s*(?:deadlift|dead\s+lift|squat|bench|press|lunge|curl|extension|row|pull|push|fly|raise|crunch|sit-up|push-up|pull-up)/i)
+        if (exerciseMatch) {
+          exercise = exerciseMatch[0].trim()
+        }
+      } else {
+        // Patterns with weight
+        reps = parseInt(match[1] || match[2])
+        exercise = (match[2] || match[1] || '').trim()
+        weight = parseFloat(match[3] || match[2] || '0')
+      }
+      
+      // If we have reps and exercise, log it (even without weight)
+      if (exercise && reps && reps > 0) {
         return {
           domain: 'WORKOUT',
-          type: 'SET_COMPLETED',
-          payload: { exercise, reps, weight, unit },
+          type: weight > 0 ? 'SET_COMPLETED' : 'WORKOUT_COMPLETED',
+          payload: weight > 0 
+            ? { exercise: exercise.trim(), reps, weight, unit }
+            : { exercise: exercise.trim(), reps, notes: text },
           confidence: 0.85,
         }
       }
@@ -131,54 +153,70 @@ export function parseWithHeuristics(text: string): ParsedEvent | null {
   }
 
   // Work/Productivity patterns - coding projects, building apps, working on tasks
-  const workMatch = lower.match(/(?:worked|working|built|building|worked on|completed|finished)\s+(?:on\s+)?(\d+)\s*(?:coding\s+)?(?:projects?|apps?|tasks?|things)/i)
-  if (workMatch) {
-    const count = parseInt(workMatch[1])
-    return {
-      domain: 'PRODUCTIVITY',
-      type: 'TASK_COMPLETED',
-      payload: { 
-        type: 'PROJECT',
-        count,
-        description: text,
-      },
-      confidence: 0.8,
-    }
-  }
-
-  // Work/productivity patterns - more flexible
+  // More flexible patterns to catch "worked on more like 5 apps/coding projects"
   const workPatterns = [
-    /(?:worked|working|built|building|completed|finished)\s+(?:on\s+)?(\d+)\s*(?:coding\s+)?(?:projects?|apps?|tasks?|things)/i,
+    /(?:worked|working|built|building|completed|finished|improving|improved)\s+(?:on\s+)?(?:more\s+like\s+)?(\d+)\s*(?:coding\s+)?(?:projects?|apps?|tasks?|things)/i,
     /(\d+)\s*(?:coding\s+)?(?:projects?|apps?|tasks?)/i,
-    /(?:did|completed|finished)\s+(\d+)\s*(?:things?|items?|tasks?)/i,
+    /(?:did|completed|finished|worked on)\s+(?:more\s+like\s+)?(\d+)\s*(?:things?|items?|tasks?|projects?|apps?)/i,
+    /(?:improving|improved|working on)\s+(?:my\s+)?(?:portfolio|code|projects?).*?(?:like\s+)?(\d+)/i,
   ]
   
   for (const pattern of workPatterns) {
     const match = lower.match(pattern)
-    if (match && (lower.includes('work') || lower.includes('build') || lower.includes('code') || lower.includes('project') || lower.includes('app') || lower.includes('task'))) {
-      const count = parseInt(match[1])
-      return {
-        domain: 'PRODUCTIVITY',
-        type: 'TASK_COMPLETED',
-        payload: { 
-          type: 'PROJECT',
-          count,
-          description: text,
-        },
-        confidence: 0.75,
+    if (match && (lower.includes('work') || lower.includes('build') || lower.includes('code') || 
+                  lower.includes('project') || lower.includes('app') || lower.includes('task') || 
+                  lower.includes('portfolio') || lower.includes('improving'))) {
+      const count = parseInt(match[1] || match[2] || match[3])
+      if (count > 0) {
+        return {
+          domain: 'PRODUCTIVITY',
+          type: 'PROJECT_COMPLETED',
+          payload: { 
+            type: 'PROJECT',
+            count,
+            description: text,
+          },
+          confidence: 0.8,
+        }
       }
     }
   }
 
-  // Job application patterns
-  const jobMatch = lower.match(/(?:applied|submitted|sent)\s+(?:application|application)\s+(?:to|for|at)\s+([a-z\s]+?)(?:\s+for|$)/i)
-  if (jobMatch) {
-    const company = jobMatch[1].trim()
-    return {
-      domain: 'JOBS', // Match preset domain name
-      type: 'JOB_APPLIED',
-      payload: { company, status: 'APPLIED' },
-      confidence: 0.8,
+  // Job application patterns - more flexible
+  const jobPatterns = [
+    // "applied to company X" or "submitted application for Y"
+    /(?:applied|submitted|sent)\s+(?:application|application)?\s*(?:to|for|at)\s+([a-z\s]+?)(?:\s+for|$)/i,
+    // "finding jobs to apply to, i have 5 i need to apply to"
+    /(?:finding|found|have|need|need to apply to)\s+(?:jobs?|positions?|applications?).*?(?:have|need|found)\s+(\d+)/i,
+    // "i have 5 jobs to apply to" or "5 job applications"
+    /(?:have|need|found|applying to)\s+(\d+)\s+(?:jobs?|positions?|applications?)(?:\s+to\s+(?:apply|apply to))?/i,
+    // "found 5 job opportunities"
+    /(?:found|have|discovered)\s+(\d+)\s+(?:job|position|opportunit)(?:ies|y)/i,
+  ]
+  
+  for (const pattern of jobPatterns) {
+    const match = lower.match(pattern)
+    if (match && (lower.includes('job') || lower.includes('apply') || lower.includes('position') || lower.includes('application'))) {
+      const count = match[1] ? parseInt(match[1]) : undefined
+      const company = match[1] && !count ? match[1].trim() : undefined
+      
+      if (count && count > 0) {
+        // Multiple jobs found/need to apply to
+        return {
+          domain: 'JOBS',
+          type: 'JOB_FOUND',
+          payload: { count, notes: text },
+          confidence: 0.8,
+        }
+      } else if (company) {
+        // Single job application
+        return {
+          domain: 'JOBS',
+          type: 'JOB_APPLIED',
+          payload: { company, status: 'APPLIED' },
+          confidence: 0.8,
+        }
+      }
     }
   }
 

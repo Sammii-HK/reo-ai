@@ -179,6 +179,20 @@ async function createDomainLog(
               notes: payload.notes,
             },
           })
+        } else if (type === 'JOB_FOUND') {
+          // Create a job application entry for each job found
+          const count = payload.count || 1
+          for (let i = 0; i < count; i++) {
+            await prisma.jobApplication.create({
+              data: {
+                userId,
+                company: 'To be determined',
+                role: 'To be determined',
+                stage: 'INTERESTED',
+                notes: payload.notes || `Found ${count} job${count > 1 ? 's' : ''} to apply to`,
+              },
+            })
+          }
         }
         break
 
