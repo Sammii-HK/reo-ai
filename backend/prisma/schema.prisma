@@ -1,0 +1,256 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  plan      String   @default("free") // free | pro
+  locale    String   @default("en-GB")
+  tz        String   @default("Europe/London")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  domains         Domain[]
+  events          Event[]
+  habitLogs       HabitLog[]
+  wellnessLogs    WellnessLog[]
+  workoutSets     WorkoutSet[]
+  jobApplications JobApplication[]
+  sobrietyLogs    SobrietyLog[]
+  routineChecks   RoutineCheck[]
+  financeLogs     FinanceLog[]
+  learningLogs    LearningLog[]
+  productivityLogs ProductivityLog[]
+  healthLogs      HealthLog[]
+  metrics         Metric[]
+}
+
+model Domain {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String   // e.g. "HABIT", "WORKOUT", "Custom Project Tracker"
+  type      String   // PRESET | CUSTOM
+  enabled   Boolean  @default(true)
+  order     Int      // User-defined order (0, 1, 2, ...)
+  icon      String?
+  color     String?
+  schema    Json     // Field definitions, types, validation, display preferences
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, order])
+  @@map("domains")
+}
+
+model Event {
+  id        String   @id @default(cuid())
+  userId    String
+  ts        DateTime @default(now())
+  domain    String   // Domain name (preset or custom)
+  type      String   // e.g. 'WATER_LOGGED','SQUAT_SET','JOB_APPLIED'
+  payload   Json     // normalized data matching domain schema
+  source    String   // CHAT | VOICE | API | IMPORT
+  inputText String?  // raw NL for audit
+  version   Int      @default(1) // parser version
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, ts])
+  @@index([userId, domain, ts])
+  @@map("events")
+}
+
+model HabitLog {
+  id        String   @id @default(cuid())
+  userId    String
+  habitId   String?
+  value     Float?
+  unit      String?
+  meta      Json?
+  ts        DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, ts])
+  @@map("habit_logs")
+}
+
+model WellnessLog {
+  id        String   @id @default(cuid())
+  userId    String
+  kind      String   // WATER | SLEEP | MOOD | NUTRITION
+  value     Float?
+  unit      String?
+  meta      Json?
+  ts        DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, ts])
+  @@index([userId, kind, ts])
+  @@map("wellness_logs")
+}
+
+model WorkoutSet {
+  id        String   @id @default(cuid())
+  userId    String
+  exercise  String
+  weightKg  Float?
+  reps      Int?
+  rpe       Float?   // Rate of Perceived Exertion (1-10)
+  meta      Json?
+  ts        DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, ts])
+  @@index([userId, exercise, ts])
+  @@map("workout_sets")
+}
+
+model JobApplication {
+  id        String   @id @default(cuid())
+  userId    String
+  company   String
+  role      String
+  stage     String   // Applied | Screen | Interview | Offer | Rejected | Hold
+  salary    Int?
+  notes     String?
+  ts        DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, stage])
+  @@index([userId, ts])
+  @@map("job_applications")
+}
+
+model SobrietyLog {
+  id        String   @id @default(cuid())
+  userId    String
+  substance String?
+  status    String   // sober | craving | relapsed
+  craving   Int?     // 1-10 scale
+  notes     String?
+  ts        DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, ts])
+  @@map("sobriety_logs")
+}
+
+model RoutineCheck {
+  id        String   @id @default(cuid())
+  userId    String
+  routineId String?
+  status    String   // completed | skipped | partial
+  notes     String?
+  ts        DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, ts])
+  @@map("routine_checks")
+}
+
+model FinanceLog {
+  id        String   @id @default(cuid())
+  userId    String
+  category  String?
+  amount    Float
+  type      String   // INCOME | EXPENSE
+  notes     String?
+  ts        DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, ts])
+  @@index([userId, type, ts])
+  @@map("finance_logs")
+}
+
+model LearningLog {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // COURSE | BOOK | SKILL
+  title     String
+  progress  Float?   // 0-100
+  notes     String?
+  ts        DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, ts])
+  @@map("learning_logs")
+}
+
+model ProductivityLog {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // TASK | POMODORO | FOCUS
+  duration  Int?     // minutes
+  notes     String?
+  ts        DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, ts])
+  @@map("productivity_logs")
+}
+
+model HealthLog {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // SYMPTOM | MEDICATION | VITAL
+  value     Float?
+  unit      String?
+  notes     String?
+  ts        DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, ts])
+  @@map("health_logs")
+}
+
+model Metric {
+  id        String   @id @default(cuid())
+  userId    String
+  domain    String
+  metricType String  // e.g. 'water_total', 'workouts_count', 'jobs_applied'
+  value     Float
+  period    String   // day | week | month
+  periodStart DateTime
+  periodEnd   DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, domain, periodStart])
+  @@index([userId, metricType, periodStart])
+  @@map("metrics")
+}
