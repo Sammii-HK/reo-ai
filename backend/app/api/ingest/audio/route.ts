@@ -177,10 +177,11 @@ async function createDomainLog(
           await prisma.jobApplication.create({
             data: {
               userId,
-              company: payload.company,
-              position: payload.position,
-              status: payload.status || 'APPLIED',
-              meta: payload,
+              company: payload.company || 'Unknown',
+              role: payload.position || payload.role || 'Unknown',
+              stage: payload.status || payload.stage || 'Applied',
+              salary: payload.salary ? parseInt(payload.salary) : undefined,
+              notes: payload.notes,
             },
           })
         }
@@ -190,11 +191,10 @@ async function createDomainLog(
           await prisma.financeLog.create({
             data: {
               userId,
-              category: payload.category,
-              amount: payload.amount,
-              type: payload.type,
+              category: payload.category || '',
+              amount: payload.amount || 0,
+              type: payload.type || 'EXPENSE',
               notes: payload.notes,
-              meta: payload,
             },
           })
         }

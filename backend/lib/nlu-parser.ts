@@ -280,8 +280,8 @@ export async function parseInput(
     const llmResult = await parseWithLLM(text, openaiKey, existingDomains)
     if (llmResult) {
       return {
-        events: [llmResult.events || []],
-        response: llmResult.response || generateConfirmation(llmResult),
+        events: llmResult.events || [],
+        response: llmResult.response || '',
         suggestedCategory: llmResult.suggestedCategory,
       }
     }

@@ -2,9 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withAuth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-async function getDomainDataHandler(req: NextRequest, userId: string, { params }: { params: { domainId: string } }) {
+async function getDomainDataHandler(req: NextRequest, userId: string) {
   try {
-    const domainId = params.domainId
+    // Extract domainId from URL path
+    const url = new URL(req.url)
+    const pathSegments = url.pathname.split('/')
+    const domainId = pathSegments[pathSegments.length - 1]
+    
     const { searchParams } = new URL(req.url)
     const limit = parseInt(searchParams.get('limit') || '50')
     const offset = parseInt(searchParams.get('offset') || '0')

@@ -152,10 +152,11 @@ async function createDomainLog(
           await prisma.jobApplication.create({
             data: {
               userId,
-              company: payload.company,
-              position: payload.position,
-              status: payload.status || 'APPLIED',
-              meta: payload,
+              company: payload.company || 'Unknown',
+              role: payload.position || payload.role || 'Unknown',
+              stage: payload.status || payload.stage || 'Applied',
+              salary: payload.salary ? parseInt(payload.salary) : undefined,
+              notes: payload.notes,
             },
           })
         }
@@ -166,11 +167,10 @@ async function createDomainLog(
           await prisma.financeLog.create({
             data: {
               userId,
-              category: payload.category,
-              amount: payload.amount,
-              type: payload.type,
+              category: payload.category || '',
+              amount: payload.amount || 0,
+              type: payload.type || 'EXPENSE',
               notes: payload.notes,
-              meta: payload,
             },
           })
         }
@@ -198,19 +198,18 @@ async function createDomainLog(
         }
         break
 
-             case 'PRODUCTIVITY':
-               if (type === 'TASK_COMPLETED' || type === 'POMODORO_COMPLETED' || type === 'FOCUS_SESSION' || type === 'PROJECT_COMPLETED') {
-                 await prisma.productivityLog.create({
-                   data: {
-                     userId,
-                     type: payload.type || type.replace('_COMPLETED', '').replace('_SESSION', ''),
-                     duration: payload.duration,
-                     notes: payload.notes || payload.description,
-                     meta: payload,
-                   },
-                 })
-               }
-               break
+      case 'PRODUCTIVITY':
+        if (type === 'TASK_COMPLETED' || type === 'POMODORO_COMPLETED' || type === 'FOCUS_SESSION' || type === 'PROJECT_COMPLETED') {
+          await prisma.productivityLog.create({
+            data: {
+              userId,
+              type: payload.type || type.replace('_COMPLETED', '').replace('_SESSION', ''),
+              duration: payload.duration,
+              notes: payload.notes || payload.description,
+            },
+          })
+        }
+        break
 
       case 'HEALTH':
         if (type === 'SYMPTOM_LOGGED' || type === 'MEDICATION_TAKEN' || type === 'VITAL_LOGGED') {
