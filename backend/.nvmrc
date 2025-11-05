@@ -1,0 +1,4 @@
+# Use Node.js 20
+# Railway uses this to set the Node version
+
+NODE_VERSION=20
