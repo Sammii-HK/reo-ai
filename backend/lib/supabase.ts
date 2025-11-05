@@ -19,10 +19,22 @@ export function createServerSupabaseClient() {
 
 // Client-side Supabase client (for API routes that receive tokens)
 export function createApiSupabaseClient(authHeader?: string) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
+  console.log('🔧 Creating Supabase API client:', {
+    hasUrl: !!supabaseUrl,
+    hasAnonKey: !!supabaseAnonKey,
+    url: supabaseUrl?.substring(0, 30) + '...',
+    keyPreview: supabaseAnonKey ? `${supabaseAnonKey.substring(0, 20)}...` : 'missing',
+  })
+
   if (!supabaseUrl || !supabaseAnonKey) {
+    console.error('❌ Missing Supabase environment variables:', {
+      NEXT_PUBLIC_SUPABASE_URL: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+      SUPABASE_URL: !!process.env.SUPABASE_URL,
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    })
     throw new Error('Missing Supabase environment variables')
   }
 
@@ -32,14 +44,6 @@ export function createApiSupabaseClient(authHeader?: string) {
       persistSession: false,
     },
   })
-
-  // Set auth header if provided (from mobile app)
-  if (authHeader) {
-    client.auth.setSession({
-      access_token: authHeader.replace('Bearer ', ''),
-      refresh_token: '',
-    } as any)
-  }
 
   return client
 }

@@ -6,7 +6,15 @@ export async function verifyAuth(request: NextRequest) {
     // Get token from Authorization header
     const authHeader = request.headers.get('authorization')
     
+    console.log('🔐 Auth check:', {
+      hasHeader: !!authHeader,
+      headerPreview: authHeader ? `${authHeader.substring(0, 30)}...` : 'none',
+      method: request.method,
+      url: request.url,
+    })
+    
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.warn('⚠️ Missing or invalid authorization header')
       return {
         error: 'Missing or invalid authorization header',
         user: null,
@@ -14,25 +22,52 @@ export async function verifyAuth(request: NextRequest) {
     }
 
     const token = authHeader.replace('Bearer ', '')
+    console.log('🔑 Token extracted:', {
+      tokenLength: token.length,
+      tokenPreview: `${token.substring(0, 20)}...`,
+    })
+    
     const supabase = createApiSupabaseClient()
 
     // Verify the token with Supabase
     const { data: { user }, error } = await supabase.auth.getUser(token)
 
-    if (error || !user) {
+    if (error) {
+      console.error('❌ Supabase auth error:', {
+        message: error.message,
+        status: error.status,
+        name: error.name,
+      })
+      return {
+        error: `Invalid or expired token: ${error.message}`,
+        user: null,
+      }
+    }
+
+    if (!user) {
+      console.error('❌ No user returned from Supabase')
       return {
         error: 'Invalid or expired token',
         user: null,
       }
     }
 
+    console.log('✅ Auth successful:', {
+      userId: user.id,
+      email: user.email,
+    })
+
     return {
       error: null,
       user,
     }
-  } catch (error) {
+  } catch (error: any) {
+    console.error('❌ Auth verification exception:', {
+      message: error?.message,
+      stack: error?.stack,
+    })
     return {
-      error: 'Authentication failed',
+      error: `Authentication failed: ${error?.message || 'Unknown error'}`,
       user: null,
     }
   }
