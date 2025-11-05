@@ -1,4 +1,3 @@
-import '../global.css'
 import 'react-native-gesture-handler'
 import { AuthProvider } from '@/lib/auth'
 import { Stack } from 'expo-router'

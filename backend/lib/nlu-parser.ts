@@ -637,6 +637,63 @@ export function parseWithHeuristics(text: string): ParsedEvent | null {
     }
   }
 
+  // ===== TODO/LIST PATTERNS =====
+  
+  const todoPatterns = [
+    // "add todo: buy milk" or "add to list: groceries"
+    /(?:add|create|new)\s+(?:todo|task|item|list\s+item)\s*:?\s*(.+)/i,
+    // "mark X as done" or "complete X"
+    /(?:mark|check|complete|finish|done|tick)\s+(?:off\s+)?(.+?)\s+(?:as\s+)?(?:done|completed|finished)/i,
+    // "X is done" or "finished X"
+    /(.+?)\s+(?:is|was)\s+(?:done|completed|finished)/i,
+    // Simple todo list: "todo: buy milk, get groceries, call mom"
+    /(?:todo|todos|list|tasks)\s*:?\s*(.+)/i,
+  ]
+  
+  for (const pattern of todoPatterns) {
+    const match = lower.match(pattern)
+    if (match) {
+      const todoText = match[1].trim()
+      
+      // If it's a completion pattern
+      if (lower.match(/mark|check|complete|finish|done|tick|is\s+done|was\s+done/)) {
+        return {
+          domain: 'LISTS',
+          type: 'TASK_COMPLETED',
+          payload: { 
+            title: todoText,
+            status: 'completed',
+          },
+          confidence: 0.8,
+        }
+      }
+      
+      // If it's multiple items separated by commas
+      if (todoText.includes(',')) {
+        const items = todoText.split(',').map(i => i.trim()).filter(i => i.length > 0)
+        return {
+          domain: 'LISTS',
+          type: 'TASKS_ADDED',
+          payload: { 
+            items: items.map(title => ({ title, status: 'todo' })),
+          },
+          confidence: 0.85,
+        }
+      }
+      
+      // Single todo item
+      return {
+        domain: 'LISTS',
+        type: 'TASK_ADDED',
+        payload: { 
+          title: todoText,
+          status: 'todo',
+        },
+        confidence: 0.85,
+      }
+    }
+  }
+
   return null
 }
 
@@ -707,7 +764,7 @@ export async function parseWithLLM(
   }
 
   try {
-    const domainList = existingDomains?.join(', ') || 'WELLNESS, WORKOUT, HABIT, JOBS, FINANCES, LEARNING, PRODUCTIVITY, HEALTH, SOBRIETY, ROUTINE'
+    const domainList = existingDomains?.join(', ') || 'WELLNESS, WORKOUT, HABIT, JOBS, FINANCES, LEARNING, PRODUCTIVITY, HEALTH, SOBRIETY, ROUTINE, LISTS'
     
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',

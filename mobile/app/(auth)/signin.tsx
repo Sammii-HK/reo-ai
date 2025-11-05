@@ -1,7 +1,5 @@
-/// <reference types="nativewind/types" />
-
 import React, { useState } from 'react'
-import { View, Text, TextInput, TouchableOpacity, Alert } from 'react-native'
+import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet } from 'react-native'
 import { useAuth } from '@/lib/auth'
 import { router } from 'expo-router'
 
@@ -29,12 +27,12 @@ export default function SignInScreen() {
   }
 
   return (
-    <View className="flex-1 justify-center px-5 bg-white">
-      <Text className="text-3xl font-bold mb-2 text-center">Welcome to Reo</Text>
-      <Text className="text-base text-gray-600 mb-8 text-center">Sign in to continue</Text>
+    <View style={styles.container}>
+      <Text style={styles.title}>Welcome to Reo</Text>
+      <Text style={styles.subtitle}>Sign in to continue</Text>
 
       <TextInput
-        className="border border-gray-300 rounded-lg p-4 text-base mb-4 bg-gray-50"
+        style={styles.input}
         placeholder="Email"
         value={email}
         onChangeText={setEmail}
@@ -44,7 +42,7 @@ export default function SignInScreen() {
       />
 
       <TextInput
-        className="border border-gray-300 rounded-lg p-4 text-base mb-4 bg-gray-50"
+        style={styles.input}
         placeholder="Password"
         value={password}
         onChangeText={setPassword}
@@ -53,23 +51,76 @@ export default function SignInScreen() {
       />
 
       <TouchableOpacity
-        className={`bg-blue-500 rounded-lg p-4 items-center mt-2 ${loading ? 'opacity-60' : ''}`}
+        style={[styles.button, loading && styles.buttonDisabled]}
         onPress={handleSignIn}
         disabled={loading}
       >
-        <Text className="text-white text-base font-semibold">
+        <Text style={styles.buttonText}>
           {loading ? 'Signing in...' : 'Sign In'}
         </Text>
       </TouchableOpacity>
 
       <TouchableOpacity
-        className="mt-4 items-center"
+        style={styles.linkButton}
         onPress={() => router.push('/(auth)/signup')}
       >
-        <Text className="text-blue-500 text-sm">
+        <Text style={styles.linkText}>
           Don't have an account? Sign up
         </Text>
       </TouchableOpacity>
     </View>
   )
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 20,
+    backgroundColor: '#fff',
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 32,
+    textAlign: 'center',
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 16,
+    fontSize: 16,
+    marginBottom: 16,
+    backgroundColor: '#f9f9f9',
+  },
+  button: {
+    backgroundColor: '#3b82f6',
+    borderRadius: 8,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  linkButton: {
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  linkText: {
+    color: '#3b82f6',
+    fontSize: 14,
+  },
+})

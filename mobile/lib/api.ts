@@ -26,20 +26,67 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${this.accessToken}`
     }
 
-    const response = await fetch(url, {
-      ...options,
-      headers,
-    })
+    try {
+      console.log('🌐 Making request:', {
+        method: options.method || 'GET',
+        url,
+        hasToken: !!this.accessToken,
+        tokenPreview: this.accessToken ? `${this.accessToken.substring(0, 20)}...` : 'none',
+      })
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({
-        error: 'Request failed',
-        status: response.status,
-      }))
-      throw new Error(error.error || `HTTP ${response.status}`)
+      const response = await fetch(url, {
+        ...options,
+        headers,
+      })
+
+      console.log('📡 Response status:', response.status, response.statusText)
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('❌ API error response:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText,
+        })
+        
+        let errorData
+        try {
+          errorData = JSON.parse(errorText)
+        } catch {
+          errorData = { error: errorText || 'Request failed' }
+        }
+        
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      const jsonData = await response.json()
+      console.log('✅ API success:', { endpoint, hasData: !!jsonData })
+      return jsonData
+    } catch (error: any) {
+      // Handle network errors
+      if (error.message === 'Failed to fetch' || error.name === 'TypeError' || error.message?.includes('NetworkError') || error.message?.includes('Network request failed')) {
+        console.error('❌ Network error:', {
+          url,
+          hasToken: !!this.accessToken,
+          baseUrl: this.baseUrl,
+          errorMessage: error.message,
+          errorName: error.name,
+          errorStack: error.stack,
+        })
+        
+        // Check if it's a CORS or connection issue
+        const isLikelyBackendDown = !error.message.includes('CORS')
+        const errorMsg = isLikelyBackendDown
+          ? `Cannot connect to backend server at ${this.baseUrl}. Please check if the backend is running and accessible. If you're using a simulator, try using a physical device or check network settings.`
+          : `Connection error. Please check your internet connection.`
+        
+        throw new Error(errorMsg)
+      }
+      
+      // Re-throw other errors (including API errors)
+      console.error('❌ Request error:', error)
+      throw error
     }
-
-    return response.json()
   }
 
   // Auth endpoints
@@ -89,9 +136,13 @@ class ApiClient {
 
   // Ingestion endpoint (for conversational input)
   async ingest(text: string) {
+    console.log('📤 Sending ingest request:', { text, url: `${this.baseUrl}/api/ingest`, hasToken: !!this.accessToken })
     return this.request<{
       success: boolean
       events: any[]
+      response: string
+      parsed: boolean
+      suggestedCategory?: { name: string; reason: string }
     }>('/api/ingest', {
       method: 'POST',
       body: JSON.stringify({ text }),
@@ -102,6 +153,9 @@ class ApiClient {
   async getSummary(period: 'daily' | 'weekly' = 'daily') {
     return this.request<{
       summary: string
+      period: string
+      startDate: string
+      endDate: string
       metrics: any
     }>(`/api/summary?period=${period}`)
   }
@@ -114,6 +168,80 @@ class ApiClient {
     return this.request<{
       metrics: any[]
     }>(url)
+  }
+
+  // Domains endpoints
+  async getDomains() {
+    return this.request<{
+      domains: any[]
+    }>('/api/domains')
+  }
+
+  async ensureDomains() {
+    return this.request<{
+      message: string
+      domains: any[]
+      count?: number
+    }>('/api/domains/ensure', {
+      method: 'POST',
+    })
+  }
+
+  async createDomain(data: {
+    name: string
+    type?: 'PRESET' | 'CUSTOM'
+    schema?: Record<string, any>
+    icon?: string
+    color?: string
+  }) {
+    return this.request<{
+      domain: any
+    }>('/api/domains', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  // Domain view endpoint
+  async getDomainData(domainId: string, limit?: number, offset?: number) {
+    const params = new URLSearchParams()
+    if (limit) params.append('limit', limit.toString())
+    if (offset) params.append('offset', offset.toString())
+    const query = params.toString()
+    return this.request<{
+      domain: any
+      events: any[]
+      logs: any[]
+      total: number
+    }>(`/api/domains/${domainId}${query ? `?${query}` : ''}`)
+  }
+
+  // Audio ingest endpoint
+  async ingestAudio(audioUri: string) {
+    const formData = new FormData()
+    formData.append('audio', {
+      uri: audioUri,
+      type: 'audio/webm',
+      name: 'audio.webm',
+    } as any)
+
+    const response = await fetch(`${this.baseUrl}/api/ingest/audio`, {
+      method: 'POST',
+      headers: {
+        'Authorization': this.accessToken ? `Bearer ${this.accessToken}` : '',
+      },
+      body: formData,
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({
+        error: 'Request failed',
+        status: response.status,
+      }))
+      throw new Error(error.error || `HTTP ${response.status}`)
+    }
+
+    return response.json()
   }
 }
 
