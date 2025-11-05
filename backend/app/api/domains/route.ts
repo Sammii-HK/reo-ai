@@ -97,13 +97,16 @@ async function updateDomainHandler(req: NextRequest, userId: string) {
     const body = await req.json()
     const data = updateDomainSchema.parse(body)
 
-    const domain = await prisma.domain.updateMany({
-      where: {
-        id: domainId,
-        userId, // Ensure user owns the domain
-      },
-      data,
-    })
+    // Use retry for prepared statement conflicts
+    const domain = await retryQuery(() =>
+      prisma.domain.updateMany({
+        where: {
+          id: domainId,
+          userId, // Ensure user owns the domain
+        },
+        data,
+      })
+    )
 
     if (domain.count === 0) {
       return NextResponse.json(
@@ -112,10 +115,12 @@ async function updateDomainHandler(req: NextRequest, userId: string) {
       )
     }
 
-    // Return updated domain
-    const updated = await prisma.domain.findFirst({
-      where: { id: domainId, userId },
-    })
+    // Return updated domain with retry
+    const updated = await retryQuery(() =>
+      prisma.domain.findFirst({
+        where: { id: domainId, userId },
+      })
+    )
 
     return NextResponse.json({ domain: updated })
   } catch (error: any) {

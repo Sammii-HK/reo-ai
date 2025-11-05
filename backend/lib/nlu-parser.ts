@@ -270,21 +270,114 @@ export function parseWithHeuristics(text: string): ParsedEvent | null {
 
   // ===== HABIT PATTERNS =====
   
+  // Common habit phrases that users might say
+  const commonHabits: Record<string, string> = {
+    'quit smoking': 'quit smoking',
+    'quit cigarettes': 'quit smoking',
+    'stop smoking': 'quit smoking',
+    'no smoking': 'quit smoking',
+    'eating healthier': 'eat healthy',
+    'eating healthy': 'eat healthy',
+    'eat healthier': 'eat healthy',
+    'eat healthy': 'eat healthy',
+    'healthy eating': 'eat healthy',
+    'drank water': 'drink water',
+    'drinking water': 'drink water',
+    'drink water': 'drink water',
+    'exercise': 'exercise',
+    'exercised': 'exercise',
+    'workout': 'exercise',
+    'meditation': 'meditate',
+    'meditated': 'meditate',
+    'meditate': 'meditate',
+    'journaling': 'journal',
+    'journaled': 'journal',
+    'journal': 'journal',
+    'reading': 'read',
+    'read': 'read',
+    'walking': 'walk',
+    'walked': 'walk',
+    'walk': 'walk',
+    'yoga': 'yoga',
+    'stretching': 'stretch',
+    'stretched': 'stretch',
+    'stretch': 'stretch',
+  }
+  
+  // Normalize habit name
+  const normalizeHabit = (habit: string): string => {
+    const lowerHabit = habit.toLowerCase().trim()
+    // Check common habits first
+    for (const [key, normalized] of Object.entries(commonHabits)) {
+      if (lowerHabit.includes(key) || key.includes(lowerHabit)) {
+        return normalized
+      }
+    }
+    // Otherwise, clean up the extracted text
+    return habit.trim().toLowerCase()
+  }
+  
   const habitPatterns = [
-    /(?:completed|did|finished|checked\s+off|marked|accomplished)\s+(?:my\s+)?([a-z\s]+?)\s+(?:habit|today|off|task)/i,
-    /(?:habit|routine)\s+(?:of\s+)?([a-z\s]+?)\s+(?:completed|done|finished)/i,
+    // Direct mentions: "quitting smoking", "eating healthier", "drank water"
+    /(?:quit|quitting|stopped?|staying\s+away\s+from|abstained\s+from)\s+(?:smoking|cigarettes|tobacco)/i,
+    /(?:eating|eat|ate)\s+(?:healthier|healthy)/i,
+    /(?:drank|drinking|drink)\s+(?:water|h2o)/i,
+    /(?:did|completed|finished|did\s+my)\s+(?:exercise|workout|meditation|journaling|reading|walking|yoga|stretching)/i,
+    
+    // Pattern-based: "completed my X habit"
+    /(?:completed|did|finished|checked\s+off|marked|accomplished|stuck\s+to)\s+(?:my\s+)?([a-z\s]{2,40}?)\s+(?:habit|today|off|task|routine)/i,
+    /(?:habit|routine|goal)\s+(?:of\s+)?([a-z\s]{2,40}?)\s+(?:completed|done|finished|accomplished)/i,
+    
+    // Simple: "I X today" where X is a habit
+    /(?:i\s+)?(?:quit|stopped|started|continued|did|completed|finished)\s+(?:smoking|exercising|eating\s+healthy|meditating|journaling|reading|walking|yoga)/i,
   ]
   
   for (const pattern of habitPatterns) {
     const match = lower.match(pattern)
     if (match) {
-      const habit = match[1].trim()
-      if (habit.length > 0 && habit.length < 50) {
+      let habit: string
+      
+      // If pattern has capture group, use it
+      if (match[1]) {
+        habit = normalizeHabit(match[1])
+      } else {
+        // Otherwise extract from the full match
+        const fullMatch = match[0]
+        if (fullMatch.includes('smoking') || fullMatch.includes('cigarettes')) {
+          habit = 'quit smoking'
+        } else if (fullMatch.includes('healthy') || fullMatch.includes('healthier')) {
+          habit = 'eat healthy'
+        } else if (fullMatch.includes('water')) {
+          habit = 'drink water'
+        } else if (fullMatch.includes('exercise') || fullMatch.includes('workout')) {
+          habit = 'exercise'
+        } else if (fullMatch.includes('meditat')) {
+          habit = 'meditate'
+        } else if (fullMatch.includes('journal')) {
+          habit = 'journal'
+        } else if (fullMatch.includes('read')) {
+          habit = 'read'
+        } else if (fullMatch.includes('walk')) {
+          habit = 'walk'
+        } else if (fullMatch.includes('yoga')) {
+          habit = 'yoga'
+        } else if (fullMatch.includes('stretch')) {
+          habit = 'stretch'
+        } else {
+          // Fallback: extract meaningful words
+          const words = fullMatch.split(/\s+/).filter(w => 
+            !['i', 'my', 'the', 'a', 'an', 'did', 'completed', 'finished', 'habit', 'today', 'off', 'task', 'routine', 'goal'].includes(w.toLowerCase())
+          )
+          habit = normalizeHabit(words.slice(0, 3).join(' '))
+        }
+      }
+      
+      if (habit && habit.length > 0 && habit.length < 50) {
         return {
           domain: 'HABIT',
           type: 'HABIT_COMPLETED',
           payload: { habit },
-          confidence: 0.75,
+          confidence: 0.85, // Higher confidence for specific habits
         }
       }
     }

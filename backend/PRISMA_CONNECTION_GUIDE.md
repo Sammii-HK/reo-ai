@@ -66,3 +66,4 @@ If you see prepared statement errors in production:
 3. **Use singleton pattern** for Prisma client in serverless environments
 4. **Test builds locally** before deploying (`npm run build`)
 
+
