@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withAuth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { retryQuery } from '@/lib/prisma-helper'
 import { z } from 'zod'
 
 const createDomainSchema = z.object({
@@ -14,27 +15,13 @@ const createDomainSchema = z.object({
 async function getDomainsHandler(req: NextRequest, userId: string) {
   try {
     // User is already ensured by auth middleware
-    // Use raw query with retry to avoid prepared statement conflicts
-    let domains
-    try {
-      domains = await prisma.domain.findMany({
+    // Use retry helper to avoid prepared statement conflicts
+    const domains = await retryQuery(() =>
+      prisma.domain.findMany({
         where: { userId },
         orderBy: { order: 'asc' },
       })
-    } catch (queryError: any) {
-      // If prepared statement error, retry once
-      if (queryError.message?.includes('prepared statement') || queryError.code === '42P05') {
-        console.warn('Prepared statement conflict, retrying...')
-        // Wait a bit and retry
-        await new Promise(resolve => setTimeout(resolve, 100))
-        domains = await prisma.domain.findMany({
-          where: { userId },
-          orderBy: { order: 'asc' },
-        })
-      } else {
-        throw queryError
-      }
-    }
+    )
 
     return NextResponse.json({ domains })
   } catch (error: any) {
@@ -51,24 +38,28 @@ async function createDomainHandler(req: NextRequest, userId: string) {
     const body = await req.json()
     const { name, type, schema, icon, color } = createDomainSchema.parse(body)
 
-    // Get current max order
-    const maxOrder = await prisma.domain.findFirst({
-      where: { userId },
-      orderBy: { order: 'desc' },
-      select: { order: true },
-    })
+    // Get current max order with retry
+    const maxOrder = await retryQuery(() =>
+      prisma.domain.findFirst({
+        where: { userId },
+        orderBy: { order: 'desc' },
+        select: { order: true },
+      })
+    )
 
-    const domain = await prisma.domain.create({
-      data: {
-        userId,
-        name,
-        type,
-        schema: schema || {},
-        icon: icon,
-        color: color,
-        order: (maxOrder?.order ?? -1) + 1,
-      },
-    })
+    const domain = await retryQuery(() =>
+      prisma.domain.create({
+        data: {
+          userId,
+          name,
+          type,
+          schema: schema || {},
+          icon: icon,
+          color: color,
+          order: (maxOrder?.order ?? -1) + 1,
+        },
+      })
+    )
 
     return NextResponse.json({ domain }, { status: 201 })
   } catch (error: any) {

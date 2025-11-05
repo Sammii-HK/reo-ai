@@ -2,18 +2,22 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withAuth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { presetDomains } from '@/lib/seed'
+import { retryQuery } from '@/lib/prisma-helper'
 
 /**
  * POST /api/domains/ensure
  * Ensure user has all preset domains (for existing users who signed up before domains were added)
  */
+
 async function ensureDomainsHandler(req: NextRequest, userId: string) {
   try {
     // User is already ensured by auth middleware
-    // Check if user already has domains
-    const existingDomains = await prisma.domain.findMany({
-      where: { userId },
-    })
+    // Check if user already has domains with retry
+    const existingDomains = await retryQuery(() =>
+      prisma.domain.findMany({
+        where: { userId },
+      })
+    )
 
     if (existingDomains.length > 0) {
       return NextResponse.json({
@@ -34,14 +38,18 @@ async function ensureDomainsHandler(req: NextRequest, userId: string) {
       schema: domain.schema,
     }))
 
-    const created = await prisma.domain.createMany({
-      data: domainsToCreate,
-    })
+    const created = await retryQuery(() =>
+      prisma.domain.createMany({
+        data: domainsToCreate,
+      })
+    )
 
-    const domains = await prisma.domain.findMany({
-      where: { userId },
-      orderBy: { order: 'asc' },
-    })
+    const domains = await retryQuery(() =>
+      prisma.domain.findMany({
+        where: { userId },
+        orderBy: { order: 'asc' },
+      })
+    )
 
     return NextResponse.json({
       message: 'Domains created',
