@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react'
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from 'react-native'
-import { useLocalSearchParams } from 'expo-router'
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity, RefreshControl } from 'react-native'
+import { useLocalSearchParams, router } from 'expo-router'
 import { apiClient } from '@/lib/api'
+import DomainTable from '@/components/DomainTable'
 
 export default function DomainViewScreen() {
   const { domainId } = useLocalSearchParams<{ domainId: string }>()
   const [domainData, setDomainData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
     if (domainId) {
@@ -23,39 +25,18 @@ export default function DomainViewScreen() {
       console.error('Failed to load domain data:', error)
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
   }
 
-  const formatDate = (date: string | Date) => {
-    const d = new Date(date)
-    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const onRefresh = async () => {
+    setRefreshing(true)
+    await loadDomainData()
   }
 
-  const formatLogData = (log: any, domainName: string) => {
-    switch (domainName) {
-      case 'WELLNESS':
-        return `${log.kind}: ${log.value || ''} ${log.unit || ''}`
-      case 'WORKOUT':
-        return `${log.exercise}: ${log.reps} reps @ ${log.weightKg}kg`
-      case 'HABIT':
-        return log.meta?.habit || 'Habit completed'
-      case 'JOBS':
-        return `${log.company} - ${log.position} (${log.status})`
-      case 'FINANCES':
-        return `${log.type}: ${log.amount} (${log.category || 'Uncategorized'})`
-      case 'LEARNING':
-        return `${log.type}: ${log.title} (${log.progress || 0}%)`
-      case 'PRODUCTIVITY':
-        return `${log.type}: ${log.duration || 'N/A'} min`
-      case 'HEALTH':
-        return `${log.type}: ${log.value || ''} ${log.unit || ''}`
-      case 'SOBRIETY':
-        return `${log.status} (${log.substance || 'N/A'})`
-      case 'ROUTINE':
-        return `${log.routineId}: ${log.status}`
-      default:
-        return JSON.stringify(log)
-    }
+  const handleRowPress = (row: any) => {
+    // TODO: Open edit modal or detail view
+    console.log('Row pressed:', row)
   }
 
   if (loading) {
@@ -82,40 +63,39 @@ export default function DomainViewScreen() {
     return dateB.getTime() - dateA.getTime()
   })
 
-  return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>{domain.name}</Text>
-        <Text style={styles.subtitle}>
-          {domain.type === 'PRESET' ? 'Preset Category' : 'Custom Category'}
-        </Text>
-      </View>
+  // Get schema from domain or use default
+  const schema = (domain.schema as any) || { fields: [] }
 
-      {allData.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No data yet</Text>
-          <Text style={styles.emptySubtext}>
-            Start tracking by saying something in the Chat tab.
+  return (
+    <View style={styles.container}>
+      <ScrollView 
+        style={styles.scrollView}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
+        <View style={styles.header}>
+          <View style={styles.headerTop}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+              <Text style={styles.backButtonText}>← Back</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.title}>{domain.name}</Text>
+          <Text style={styles.subtitle}>
+            {domain.type === 'PRESET' ? 'Template' : 'Custom Category'} • {allData.length} entries
           </Text>
         </View>
-      ) : (
-        <View style={styles.dataList}>
-          {allData.map((item: any, index: number) => (
-            <View key={item.id || index} style={styles.dataCard}>
-              <Text style={styles.dataText}>
-                {formatLogData(item, domain.name)}
-              </Text>
-              <Text style={styles.dataDate}>
-                {formatDate(item.ts || item.createdAt)}
-              </Text>
-              {item.notes && (
-                <Text style={styles.dataNotes}>{item.notes}</Text>
-              )}
-            </View>
-          ))}
+
+        <View style={styles.tableWrapper}>
+          <DomainTable
+            data={allData}
+            schema={schema}
+            domainName={domain.name}
+            onRowPress={handleRowPress}
+          />
         </View>
-      )}
-    </ScrollView>
+      </ScrollView>
+    </View>
   )
 }
 
@@ -123,6 +103,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  scrollView: {
+    flex: 1,
   },
   loadingContainer: {
     flex: 1,
@@ -137,60 +120,38 @@ const styles = StyleSheet.create({
   },
   header: {
     padding: 20,
-    paddingBottom: 12,
+    paddingTop: 60,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    backgroundColor: '#fff',
+  },
+  headerTop: {
+    marginBottom: 12,
+  },
+  backButton: {
+    alignSelf: 'flex-start',
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+  },
+  backButtonText: {
+    fontSize: 16,
+    color: '#3b82f6',
+    fontWeight: '500',
   },
   title: {
     fontSize: 32,
     fontWeight: 'bold',
     marginBottom: 4,
+    color: '#1f2937',
   },
   subtitle: {
-    fontSize: 16,
-    color: '#666',
-  },
-  emptyContainer: {
-    padding: 40,
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    lineHeight: 24,
-  },
-  dataList: {
-    padding: 16,
-  },
-  dataCard: {
-    backgroundColor: '#f9fafb',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  dataText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1f2937',
-    marginBottom: 4,
-  },
-  dataDate: {
     fontSize: 14,
     color: '#6b7280',
-    marginBottom: 4,
   },
-  dataNotes: {
-    fontSize: 14,
-    color: '#4b5563',
-    marginTop: 8,
-    fontStyle: 'italic',
+  tableWrapper: {
+    flex: 1,
+    minHeight: 400,
   },
   errorText: {
     fontSize: 16,
