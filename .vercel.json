@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "buildCommand": "cd ../.. && npm run build --prefix landing-page",
+  "outputDirectory": ".next",
+  "installCommand": "cd ../.. && npm install --prefix landing-page",
+  "framework": "nextjs",
+  "env": {
+    "MAILERLITE_API_KEY": "@mailerlite_api_key",
+    "MAILERLITE_AUDIENCE_ID": "@mailerlite_audience_id"
+  }
+}
