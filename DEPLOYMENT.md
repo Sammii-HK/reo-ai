@@ -1,10 +1,10 @@
 # Deployment Guide
 
-## Quick Answer: Yes, Two Separate Vercel Projects
+## Recommended Architecture
 
-Deploy **two separate projects** from the same GitHub repository:
-1. **Landing Page** (root directory)
-2. **Backend API** (backend directory)
+**Landing Page** → Vercel (perfect for frontend)  
+**Backend API** → Railway (better for backend/APIs)  
+**Database** → Supabase (via Railway or separate)
 
 ---
 
@@ -18,14 +18,14 @@ git commit -m "Ready for deployment"
 git push origin main
 ```
 
-### Step 2: Deploy Landing Page
+### Step 2: Deploy Landing Page to Vercel
 
 1. Go to [Vercel Dashboard](https://vercel.com/dashboard)
 2. Click **Add New Project**
 3. Import your GitHub repository
 4. **Project Settings**:
    - **Name**: `reo-landing` (or your choice)
-   - **Root Directory**: Leave as `/` (root) - this automatically excludes `backend/` folder
+   - **Root Directory**: Leave as `/` (root)
    - **Framework Preset**: Next.js (auto-detected)
    - **Build Command**: `npm run build` (default)
    - **Output Directory**: `.next` (default)
@@ -34,37 +34,51 @@ git push origin main
    - `MAILERLITE_AUDIENCE_ID` = your MailerLite audience ID
 6. Click **Deploy**
 
-**Note**: The `backend/` folder is automatically excluded because Next.js only builds files in the `app/` directory at root level.
-
 Your landing page will be live at: `https://reo-landing.vercel.app`
 
-### Step 3: Deploy Backend API
+### Step 3: Deploy Backend API to Railway
 
-1. Still in Vercel Dashboard, click **Add New Project** again
+1. Go to [Railway Dashboard](https://railway.app)
+2. Sign up/login (free tier: $5 credit/month)
+3. Click **New Project** → **Deploy from GitHub**
+4. Select your repository
+5. **Service Settings**:
+   - **Root Directory**: Set to `backend`
+   - **Build Command**: `npm run build`
+   - **Start Command**: `npm start`
+   - **Healthcheck Path**: `/api/health` (optional)
+6. **Add Environment Variables**:
+   - `DATABASE_URL` = from Supabase (Settings → Database → Connection string → URI)
+   - `NEXT_PUBLIC_SUPABASE_URL` = from Supabase (Settings → API)
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` = from Supabase (Settings → API)
+   - `SUPABASE_SERVICE_ROLE_KEY` = from Supabase (Settings → API)
+   - `JWT_SECRET` = generate with: `openssl rand -base64 32`
+   - `NODE_ENV` = `production`
+7. **Run Migrations**:
+   - After first deploy, go to **Deployments** → **View Logs**
+   - Or use Railway CLI: `railway run npm run db:migrate`
+8. Click **Deploy**
+
+Your backend API will be live at: `https://reo-api.railway.app` (or custom domain)
+
+---
+
+## Alternative: Keep Backend on Vercel
+
+If you prefer to keep everything on Vercel (works but not optimal):
+
+1. In Vercel Dashboard, click **Add New Project** again
 2. Import the **same** GitHub repository
 3. **Project Settings**:
-   - **Name**: `reo-api` (or your choice)
-   - **Root Directory**: `backend` ⚠️ **Important: Set this to `backend`**
+   - **Name**: `reo-api`
+   - **Root Directory**: `backend`
    - **Framework Preset**: Next.js
-   - **Build Command**: `npm run build:deploy` (runs migrations)
-   - **Output Directory**: `.next` (default)
-   - **Install Command**: `npm install` (default)
-4. **Add Supabase Integration**:
-   - Go to **Settings** → **Integrations**
-   - Click **Add Integration** → **Supabase**
-   - Connect your Supabase project (or create new)
-   - This automatically adds:
-     - `DATABASE_URL`
-     - `NEXT_PUBLIC_SUPABASE_URL`
-     - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-5. **Additional Environment Variables** (Settings → Environment Variables):
-   - `JWT_SECRET` = generate with: `openssl rand -base64 32`
-   - `OPENAI_API_KEY` = (add when ready)
-   - `RESEND_API_KEY` = (add when ready)
-   - `STRIPE_SECRET_KEY` = (add when ready)
-6. Click **Deploy**
+   - **Build Command**: `npm run build:deploy`
+4. **Add Supabase Integration** (Settings → Integrations)
+5. Add other environment variables
+6. Deploy
 
-Your backend API will be live at: `https://reo-api.vercel.app`
+**Note**: Vercel works but Railway is better optimized for backends.
 
 ---
 

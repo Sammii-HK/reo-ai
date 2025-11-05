@@ -1,10 +1,8 @@
-import type { Config } from "next"
-import { PrismaClient } from "@prisma/client"
+import type { NextConfig } from "next"
 
-const prisma = new PrismaClient()
-
-const nextConfig: Config = {
+const nextConfig: NextConfig = {
   reactStrictMode: true,
+  outputFileTracingRoot: require("path").join(__dirname),
   async headers() {
     return [
       {
