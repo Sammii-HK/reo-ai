@@ -12,16 +12,32 @@ export interface ParsedEvent {
 export function parseWithHeuristics(text: string): ParsedEvent | null {
   const lower = text.toLowerCase().trim()
 
-  // Water intake patterns
-  const waterMatch = lower.match(/(?:drank|drank|had|consumed)\s+(\d+(?:\.\d+)?)\s*(?:glasses?|cups?|liters?|l|ml|oz|ounces?|water)/)
-  if (waterMatch) {
-    const amount = parseFloat(waterMatch[1])
-    const unit = lower.includes('ml') ? 'ml' : lower.includes('oz') || lower.includes('ounce') ? 'oz' : lower.includes('liter') || lower.includes('l') ? 'liter' : 'cups'
-    return {
-      domain: 'WELLNESS',
-      type: 'WATER_LOGGED',
-      payload: { amount, unit },
-      confidence: 0.9,
+  // Water intake patterns - more flexible
+  const waterPatterns = [
+    /(?:drank|drink|had|consumed)\s+(\d+(?:\.\d+)?)\s*(?:glasses?|cups?|liters?|l|ml|oz|ounces?|water)/i,
+    /(\d+(?:\.\d+)?)\s*(?:ml|milliliters?|oz|ounces?|cups?|glasses?|liters?|l)\s*(?:of\s+)?(?:water|h2o)/i,
+    /(?:drank|drink)\s+(\d+(?:\.\d+)?)/i, // Simple "drank 500" - assume ml if no unit
+  ]
+  
+  for (const pattern of waterPatterns) {
+    const match = lower.match(pattern)
+    if (match) {
+      const amount = parseFloat(match[1])
+      let unit = 'cups' // default
+      
+      if (lower.includes('ml') || lower.includes('milliliter')) unit = 'ml'
+      else if (lower.includes('oz') || lower.includes('ounce')) unit = 'oz'
+      else if (lower.includes('liter') || (lower.includes('l') && !lower.includes('ml'))) unit = 'liter'
+      else if (lower.includes('cup') || lower.includes('glass')) unit = 'cups'
+      // If number is > 100 and no unit specified, assume ml
+      else if (amount > 100 && !lower.match(/(?:cup|glass|liter|oz|ounce)/)) unit = 'ml'
+      
+      return {
+        domain: 'WELLNESS',
+        type: 'WATER_LOGGED',
+        payload: { amount, unit },
+        confidence: amount > 0 && amount < 10000 ? 0.9 : 0.7, // Lower confidence for unrealistic amounts
+      }
     }
   }
 
@@ -37,33 +53,55 @@ export function parseWithHeuristics(text: string): ParsedEvent | null {
     }
   }
 
-  // Workout patterns
-  const workoutMatch = lower.match(/(?:did|performed|completed|finished)\s+(\d+)\s*(?:reps?|repetitions?)\s+of\s+([a-z\s]+)\s+(?:at|with)\s+(\d+(?:\.\d+)?)\s*(?:kg|lbs?|pounds?)/i)
-  if (workoutMatch) {
-    const reps = parseInt(workoutMatch[1])
-    const exercise = workoutMatch[2].trim()
-    const weight = parseFloat(workoutMatch[3])
-    const unit = lower.includes('kg') ? 'kg' : 'lbs'
-    return {
-      domain: 'WORKOUT',
-      type: 'SET_COMPLETED',
-      payload: { exercise, reps, weight, unit },
-      confidence: 0.9,
-    }
-  }
-
-  // Simple workout pattern: "squat 5x100kg"
-  const simpleWorkoutMatch = lower.match(/([a-z]+)\s+(\d+)x(\d+(?:\.\d+)?)(kg|lbs?)/i)
-  if (simpleWorkoutMatch) {
-    const exercise = simpleWorkoutMatch[1].trim()
-    const reps = parseInt(simpleWorkoutMatch[2])
-    const weight = parseFloat(simpleWorkoutMatch[3])
-    const unit = simpleWorkoutMatch[4] === 'kg' ? 'kg' : 'lbs'
-    return {
-      domain: 'WORKOUT',
-      type: 'SET_COMPLETED',
-      payload: { exercise, reps, weight, unit },
-      confidence: 0.85,
+  // Workout patterns - more flexible
+  const workoutPatterns = [
+    // "did 5 reps of squats at 100kg"
+    /(?:did|performed|completed|finished)\s+(\d+)\s*(?:reps?|repetitions?)\s+(?:of\s+)?([a-z\s]+?)\s+(?:at|with|@)\s+(\d+(?:\.\d+)?)\s*(?:kg|lbs?|pounds?|lb)/i,
+    // "squat 5x100kg" or "deadlift 3x150"
+    /([a-z]+)\s+(\d+)x(\d+(?:\.\d+)?)\s*(kg|lbs?|lb)?/i,
+    // "5 squats at 100kg"
+    /(\d+)\s+([a-z]+)\s+(?:at|@|with)\s+(\d+(?:\.\d+)?)\s*(kg|lbs?|lb)/i,
+    // "ran 5km" or "ran for 30 minutes"
+    /(?:ran|run|running)\s+(?:for\s+)?(\d+)\s*(?:km|kilometers?|miles?|minutes?|min|hours?|hrs?)/i,
+  ]
+  
+  for (const pattern of workoutPatterns) {
+    const match = lower.match(pattern)
+    if (match) {
+      // Check if it's a running/cardio pattern
+      if (lower.includes('run') || lower.includes('ran')) {
+        const value = parseFloat(match[1])
+        const unit = lower.includes('km') || lower.includes('kilometer') ? 'km' : 
+                     lower.includes('mile') ? 'miles' :
+                     lower.includes('min') || lower.includes('minute') ? 'minutes' :
+                     lower.includes('hour') || lower.includes('hr') ? 'hours' : 'km'
+        return {
+          domain: 'WORKOUT',
+          type: 'WORKOUT_COMPLETED',
+          payload: { 
+            exercise: 'running',
+            distance: unit.includes('km') || unit.includes('mile') ? value : undefined,
+            duration: unit.includes('minute') || unit.includes('hour') ? value : undefined,
+            unit,
+          },
+          confidence: 0.8,
+        }
+      }
+      
+      // Weight training patterns
+      const reps = parseInt(match[1] || match[2])
+      const exercise = (match[2] || match[1] || '').trim()
+      const weight = parseFloat(match[3] || match[2])
+      const unit = lower.includes('kg') ? 'kg' : 'lbs'
+      
+      if (exercise && reps > 0 && weight > 0) {
+        return {
+          domain: 'WORKOUT',
+          type: 'SET_COMPLETED',
+          payload: { exercise, reps, weight, unit },
+          confidence: 0.85,
+        }
+      }
     }
   }
 
@@ -108,19 +146,27 @@ export function parseWithHeuristics(text: string): ParsedEvent | null {
     }
   }
 
-  // Simple work pattern: "worked on 3 projects" or "3 coding projects"
-  const simpleWorkMatch = lower.match(/(\d+)\s*(?:coding\s+)?(?:projects?|apps?|tasks?)/i)
-  if (simpleWorkMatch && (lower.includes('work') || lower.includes('build') || lower.includes('code') || lower.includes('project'))) {
-    const count = parseInt(simpleWorkMatch[1])
-    return {
-      domain: 'PRODUCTIVITY',
-      type: 'TASK_COMPLETED',
-      payload: { 
-        type: 'PROJECT',
-        count,
-        description: text,
-      },
-      confidence: 0.75,
+  // Work/productivity patterns - more flexible
+  const workPatterns = [
+    /(?:worked|working|built|building|completed|finished)\s+(?:on\s+)?(\d+)\s*(?:coding\s+)?(?:projects?|apps?|tasks?|things)/i,
+    /(\d+)\s*(?:coding\s+)?(?:projects?|apps?|tasks?)/i,
+    /(?:did|completed|finished)\s+(\d+)\s*(?:things?|items?|tasks?)/i,
+  ]
+  
+  for (const pattern of workPatterns) {
+    const match = lower.match(pattern)
+    if (match && (lower.includes('work') || lower.includes('build') || lower.includes('code') || lower.includes('project') || lower.includes('app') || lower.includes('task'))) {
+      const count = parseInt(match[1])
+      return {
+        domain: 'PRODUCTIVITY',
+        type: 'TASK_COMPLETED',
+        payload: { 
+          type: 'PROJECT',
+          count,
+          description: text,
+        },
+        confidence: 0.75,
+      }
     }
   }
 
@@ -290,11 +336,28 @@ export async function parseInput(
   // Analyze text for category suggestions
   const suggestedCategory = analyzeForCategorySuggestion(text)
   
-  // No parseable content
-  let response = "I couldn't understand that. Try something like 'drank 2 cups of water' or 'did 5 squats at 100kg'."
+  // No parseable content - ask clarifying questions
+  let response = "I'm not quite sure what you mean. Could you tell me more?"
   
-  if (suggestedCategory) {
+  // Try to extract partial information and ask for clarification
+  const lower = text.toLowerCase()
+  
+  if (lower.match(/(?:drank|drink|water|hydrated|liquid)/)) {
+    response = "I heard something about water! How much did you drink? (e.g., '2 cups' or '500ml')"
+  } else if (lower.match(/(?:worked|work|building|built|project|app|code)/)) {
+    response = "Sounds like you did some work! What did you work on? (e.g., '3 coding projects' or 'built 2 apps')"
+  } else if (lower.match(/(?:exercise|workout|gym|squat|deadlift|bench|lift|run|ran)/)) {
+    response = "I heard something about exercise! What did you do? (e.g., 'did 5 squats at 100kg' or 'ran 5km')"
+  } else if (lower.match(/(?:slept|sleep|bed|rest)/)) {
+    response = "I heard something about sleep! How many hours did you sleep? (e.g., 'slept 7 hours')"
+  } else if (lower.match(/(?:read|reading|book|pages)/)) {
+    response = "I heard something about reading! What did you read? (e.g., 'read 50 pages' or 'finished a chapter')"
+  } else if (lower.match(/(?:spent|bought|purchase|expense|money|cost)/)) {
+    response = "I heard something about money! What did you spend? (e.g., 'spent $50 on groceries')"
+  } else if (suggestedCategory) {
     response = `I couldn't categorize that. Would you like to create a "${suggestedCategory.name}" category? This sounds like it could track ${suggestedCategory.reason}.`
+  } else {
+    response = "I'm not sure how to track that. Could you give me more details? For example:\n• \"drank 2 cups of water\"\n• \"did 5 squats at 100kg\"\n• \"worked on 3 projects\"\n• \"slept 7 hours\""
   }
 
   return {
@@ -353,24 +416,33 @@ function generateConfirmation(event: ParsedEvent): string {
   
   switch (event.type) {
     case 'WATER_LOGGED':
-      return `${emoji} Logged ${event.payload.amount} ${event.payload.unit} of water.`
+      const waterAmount = event.payload.amount
+      const waterUnit = event.payload.unit
+      return `${emoji} Got it! Logged ${waterAmount} ${waterUnit} of water. Keep it up!`
     case 'SLEEP_LOGGED':
-      return `${emoji} Logged ${event.payload.hours} hours of sleep.`
+      return `${emoji} Logged ${event.payload.hours} hours of sleep. Rest well!`
     case 'SET_COMPLETED':
-      return `${emoji} Logged ${event.payload.reps} reps of ${event.payload.exercise} at ${event.payload.weight}${event.payload.unit}.`
+      return `${emoji} Nice! Logged ${event.payload.reps} reps of ${event.payload.exercise} at ${event.payload.weight}${event.payload.unit}.`
+    case 'WORKOUT_COMPLETED':
+      if (event.payload.distance) {
+        return `${emoji} Great run! Logged ${event.payload.distance} ${event.payload.unit}.`
+      } else if (event.payload.duration) {
+        return `${emoji} Good workout! Logged ${event.payload.duration} ${event.payload.unit} of running.`
+      }
+      return `${emoji} Logged your workout.`
     case 'MOOD_LOGGED':
-      return `${emoji} Logged mood: ${event.payload.mood}.`
+      return `${emoji} Noted you're feeling ${event.payload.mood}. Thanks for sharing!`
     case 'HABIT_COMPLETED':
-      return `${emoji} Marked '${event.payload.habit}' as complete.`
+      return `${emoji} Marked '${event.payload.habit}' as complete. Keep it up!`
     case 'JOB_APPLIED':
-      return `${emoji} Logged job application to ${event.payload.company}.`
+      return `${emoji} Logged job application to ${event.payload.company}. Good luck!`
     case 'TASK_COMPLETED':
     case 'PROJECT_COMPLETED':
       const count = event.payload.count ? `${event.payload.count} ` : ''
       const type = event.payload.type || 'tasks'
-      return `${emoji} Logged ${count}${type}. Great work!`
+      return `${emoji} Nice work! Logged ${count}${type}.`
     default:
-      return `${emoji} Logged ${event.type.toLowerCase().replace(/_/g, ' ')}.`
+      return `${emoji} Got it! I've logged that for you.`
   }
 }
 
