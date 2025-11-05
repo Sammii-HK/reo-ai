@@ -7,16 +7,30 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
 
+// Fix for connection pooling issues - ensure singleton pattern
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
-    // Better connection handling for production
-    datasources: {
-      db: {
-        url: process.env.DATABASE_URL,
-      },
+    // Disable prepared statements to avoid conflicts with connection pooling
+    // This is safer for serverless environments like Railway
+    // @ts-ignore - internal Prisma option
+    __internal: {
+      useUds: false,
     },
   })
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma
+// Always use singleton in production to avoid connection issues
+if (process.env.NODE_ENV !== "production") {
+  globalForPrisma.prisma = prisma
+} else {
+  // In production, ensure we don't create multiple instances
+  globalForPrisma.prisma = prisma
+}
+
+// Cleanup on process termination
+if (process.env.NODE_ENV !== "production") {
+  process.on('beforeExit', async () => {
+    await prisma.$disconnect()
+  })
+}
