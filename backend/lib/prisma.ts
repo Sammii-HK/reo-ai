@@ -8,16 +8,11 @@ const globalForPrisma = globalThis as unknown as {
 }
 
 // Fix for connection pooling issues - ensure singleton pattern
+// Note: Prepared statement conflicts are handled via retry logic in prisma-helper.ts
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
-    // Disable prepared statements to avoid conflicts with connection pooling
-    // This is safer for serverless environments like Railway
-    // @ts-ignore - internal Prisma option
-    __internal: {
-      useUds: false,
-    },
   })
 
 // Always use singleton in production to avoid connection issues
