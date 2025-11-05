@@ -202,6 +202,22 @@ class ApiClient {
     })
   }
 
+  async updateDomain(domainId: string, data: {
+    enabled?: boolean
+    name?: string
+    schema?: Record<string, any>
+    icon?: string
+    color?: string
+    order?: number
+  }) {
+    return this.request<{
+      domain: any
+    }>(`/api/domains/${domainId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  }
+
   // Domain view endpoint
   async getDomainData(domainId: string, limit?: number, offset?: number) {
     const params = new URLSearchParams()

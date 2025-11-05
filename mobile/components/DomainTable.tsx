@@ -1,5 +1,5 @@
 import React from 'react'
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native'
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Clipboard } from 'react-native'
 
 interface Field {
   id: string
@@ -46,8 +46,27 @@ export default function DomainTable({ data, schema, domainName, onRowPress }: Do
   // Get fields from schema, or use defaults based on domain
   const fields = schema?.fields || getDefaultFields(domainName)
   
-  // Transform data to rows based on fields
-  const rows = data.map(item => transformToRow(item, domainName, fields))
+  // Transform data to rows based on fields, then filter out bad data
+  const rows = data
+    .map(item => transformToRow(item, domainName, fields))
+    .filter(row => {
+      // Filter out rows with "Unknown" company, "To be determined", or bad role text
+      if (domainName === 'JOBS') {
+        const company = row.company || ''
+        const role = row.role || ''
+        // Skip if company is unknown/determined or role is just user input text
+        if (
+          company === 'Unknown' || 
+          company === 'To be determined' ||
+          role === 'i want to apply' ||
+          role === 'Unknown' ||
+          role === 'To be determined'
+        ) {
+          return false
+        }
+      }
+      return true
+    })
   
   // Get column widths (flexible) - make important columns wider
   const columnWidths = fields.map(field => {
@@ -108,30 +127,62 @@ export default function DomainTable({ data, schema, domainName, onRowPress }: Do
               rowIndex % 2 === 0 && styles.dataRowEven,
             ]}
             onPress={() => onRowPress?.(row)}
+            onLongPress={() => {
+              // On long press, show options to copy row data
+              const rowText = allFields.map(field => {
+                const value = formatValue(row[field.id] || row.date, field)
+                return `${field.name}: ${value}`
+              }).join('\n')
+              
+              Alert.alert(
+                'Copy Row Data',
+                'Copy this row to clipboard?',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { 
+                    text: 'Copy All', 
+                    onPress: () => {
+                      Clipboard.setString(rowText)
+                      Alert.alert('Copied', 'Row data copied to clipboard')
+                    }
+                  },
+                ]
+              )
+            }}
             activeOpacity={0.7}
           >
-            {allFields.map((field, colIndex) => (
-              <View 
-                key={field.id} 
-                style={[
-                  styles.dataCell, 
-                  { 
-                    flex: field.id === 'date' ? 1 : allColumnWidths[colIndex],
-                  },
-                  field.id === 'date' && { width: 120 }
-                ]}
-              >
-                <Text 
+            {allFields.map((field, colIndex) => {
+              const cellValue = formatValue(row[field.id] || row.date, field)
+              return (
+                <TouchableOpacity
+                  key={field.id}
                   style={[
-                    styles.dataText,
-                    field.id === 'date' && styles.dateText
-                  ]} 
-                  numberOfLines={field.id === 'date' ? 1 : 2}
+                    styles.dataCell, 
+                    { 
+                      flex: field.id === 'date' ? 1 : allColumnWidths[colIndex],
+                    },
+                    field.id === 'date' && { width: 120 }
+                  ]}
+                  onLongPress={() => {
+                    // Copy individual cell value
+                    Clipboard.setString(cellValue)
+                    Alert.alert('Copied', `"${cellValue}" copied to clipboard`)
+                  }}
                 >
-                  {formatValue(row[field.id] || row.date, field)}
-                </Text>
-              </View>
-            ))}
+                  <Text 
+                    style={[
+                      styles.dataText,
+                      field.id === 'date' && styles.dateText,
+                      // Highlight bad data
+                      (cellValue === 'Unknown' || cellValue === 'To be determined' || cellValue === 'i want to apply') && styles.badDataText
+                    ]} 
+                    numberOfLines={field.id === 'date' ? 1 : 2}
+                  >
+                    {cellValue}
+                  </Text>
+                </TouchableOpacity>
+              )
+            })}
           </TouchableOpacity>
         ))}
       </View>
@@ -348,6 +399,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6b7280',
     lineHeight: 16,
+  },
+  badDataText: {
+    color: '#ef4444',
+    fontStyle: 'italic',
   },
   emptyContainer: {
     padding: 40,

@@ -65,6 +65,25 @@ export default function DomainViewScreen() {
 
   // Get schema from domain or use default
   const schema = (domain.schema as any) || { fields: [] }
+  
+  // Filter out bad data entries
+  const filteredData = allData.filter(item => {
+    if (domain.name === 'JOBS') {
+      const company = item.company || item.payload?.company || ''
+      const role = item.role || item.payload?.role || item.payload?.position || ''
+      // Filter out incomplete/bad entries
+      if (
+        company === 'Unknown' || 
+        company === 'To be determined' ||
+        role === 'i want to apply' ||
+        role === 'Unknown' ||
+        role === 'To be determined'
+      ) {
+        return false
+      }
+    }
+    return true
+  })
 
   return (
     <View style={styles.container}>
@@ -82,13 +101,23 @@ export default function DomainViewScreen() {
           </View>
           <Text style={styles.title}>{domain.name}</Text>
           <Text style={styles.subtitle}>
-            {domain.type === 'PRESET' ? 'Template' : 'Custom Category'} • {allData.length} entries
+            {domain.type === 'PRESET' ? 'Template' : 'Custom Category'} • {filteredData.length} entries
+            {!domain.enabled && (
+              <Text style={styles.disabledBadge}> • Disabled</Text>
+            )}
           </Text>
+          {!domain.enabled && (
+            <View style={styles.disabledBanner}>
+              <Text style={styles.disabledBannerText}>
+                This category is disabled. Enable it in Categories to show it on the Daily page.
+              </Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.tableWrapper}>
           <DomainTable
-            data={allData}
+            data={filteredData}
             schema={schema}
             domainName={domain.name}
             onRowPress={handleRowPress}
@@ -158,6 +187,23 @@ const styles = StyleSheet.create({
     color: '#ef4444',
     textAlign: 'center',
     padding: 20,
+  },
+  disabledBadge: {
+    color: '#f59e0b',
+    fontWeight: '600',
+  },
+  disabledBanner: {
+    backgroundColor: '#fef3c7',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+  },
+  disabledBannerText: {
+    fontSize: 14,
+    color: '#92400e',
+    lineHeight: 20,
   },
 })
 

@@ -37,6 +37,14 @@ export default function AppLayout() {
         }}
       />
       <Tabs.Screen
+        name="daily"
+        options={{
+          title: 'Daily',
+          tabBarLabel: 'Daily',
+          tabBarIcon: () => null,
+        }}
+      />
+      <Tabs.Screen
         name="domains"
         options={{
           title: 'Categories',

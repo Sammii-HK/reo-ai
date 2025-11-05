@@ -126,7 +126,9 @@ export default function DomainsScreen() {
               onPress={() => router.push(`/(app)/domains/${domain.id}`)}
             >
               <View style={styles.domainIcon}>
-                <Text style={styles.iconText}>{getDomainIcon(domain)}</Text>
+                <Text style={styles.iconText} allowFontScaling={false}>
+                  {getDomainIcon(domain)}
+                </Text>
               </View>
               <View style={styles.domainContent}>
                 <Text style={styles.domainName}>{domain.name}</Text>
@@ -134,14 +136,28 @@ export default function DomainsScreen() {
                   {domain.type === 'PRESET' ? 'Template' : 'Custom'}
                 </Text>
               </View>
-              <View style={styles.domainToggle}>
+              <TouchableOpacity
+                style={styles.domainToggle}
+                onPress={async () => {
+                  try {
+                    // Toggle enabled state
+                    await apiClient.updateDomain(domain.id, { enabled: !domain.enabled })
+                    // Reload domains to reflect change
+                    await loadDomains()
+                  } catch (error: any) {
+                    console.error('Failed to toggle domain:', error)
+                    alert(`Failed to update: ${error.message}`)
+                  }
+                }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
                 <View
                   style={[
                     styles.toggleCircle,
                     domain.enabled && styles.toggleCircleActive,
                   ]}
                 />
-              </View>
+              </TouchableOpacity>
             </TouchableOpacity>
           ))}
         </View>
@@ -214,63 +230,81 @@ const styles = StyleSheet.create({
   },
   domainsList: {
     padding: 16,
+    gap: 12,
   },
   domainCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 20,
     marginBottom: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
     borderWidth: 1,
     borderColor: '#e5e7eb',
   },
   domainCardDisabled: {
-    opacity: 0.6,
+    opacity: 0.5,
+    backgroundColor: '#f9fafb',
   },
   domainIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#f8f9fa',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#f0f4ff',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
+    borderWidth: 2,
+    borderColor: '#e0e7ff',
   },
   iconText: {
-    fontSize: 28,
+    fontSize: 32,
+    textAlign: 'center',
+    includeFontPadding: false,
   },
   domainContent: {
     flex: 1,
+    justifyContent: 'center',
   },
   domainName: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1f2937',
-    marginBottom: 4,
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 6,
+    letterSpacing: -0.5,
   },
   domainType: {
-    fontSize: 14,
-    color: '#6b7280',
+    fontSize: 13,
+    color: '#9ca3af',
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   domainToggle: {
-    width: 44,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#d1d5db',
+    width: 52,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#e5e7eb',
     justifyContent: 'center',
-    paddingHorizontal: 2,
+    paddingHorizontal: 3,
+    borderWidth: 2,
+    borderColor: '#d1d5db',
   },
   toggleCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
   },
   toggleCircleActive: {
     backgroundColor: '#3b82f6',
