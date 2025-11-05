@@ -419,17 +419,27 @@ export function parseWithHeuristics(text: string): ParsedEvent | null {
             confidence: 0.85,
           }
         } else if (jobInfo.company || jobInfo.role || url) {
+          // Only create if we have at least company name
+          if (jobInfo.company && jobInfo.company !== 'Unknown') {
+            return {
+              domain: 'JOBS',
+              type: 'JOB_APPLIED',
+              payload: { 
+                company: jobInfo.company,
+                role: jobInfo.role,
+                status: 'INTERESTED',
+                url,
+                notes: original,
+              },
+              confidence: 0.75,
+            }
+          }
+          // If we have URL but no company, mark as incomplete
           return {
             domain: 'JOBS',
-            type: 'JOB_APPLIED',
-            payload: { 
-              company: jobInfo.company || 'Unknown',
-              role: jobInfo.role || 'Unknown',
-              status: 'INTERESTED',
-              url,
-              notes: original,
-            },
-            confidence: 0.75,
+            type: 'JOB_FOUND',
+            payload: { count: 1, notes: original, incomplete: true, url },
+            confidence: 0.6,
           }
         } else {
           return {

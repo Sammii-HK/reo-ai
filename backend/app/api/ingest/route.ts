@@ -30,10 +30,15 @@ async function ingestHandler(req: NextRequest, userId: string) {
     const parseResult = await parseInput(text, openaiKey, domainNames)
     const { events, response, suggestedCategory } = parseResult
 
-    // Create events in database
+    // Create events in database (skip incomplete ones - they're just prompts)
     const createdEvents = []
     for (const event of events) {
       try {
+        // Skip incomplete events - they're just prompts for more info
+        if (event.payload?.incomplete === true) {
+          continue
+        }
+
         // Create main Event record
         const eventRecord = await prisma.event.create({
           data: {
@@ -162,31 +167,36 @@ async function createDomainLog(
 
       case 'JOBS': // Changed from CAREER to match preset domain
         if (type === 'JOB_APPLIED') {
-          await prisma.jobApplication.create({
-            data: {
-              userId,
-              company: payload.company || 'Unknown',
-              role: payload.position || payload.role || 'Unknown',
-              stage: payload.status || payload.stage || 'Applied',
-              salary: payload.salary ? parseInt(payload.salary) : undefined,
-              notes: payload.notes,
-            },
-          })
-        } else if (type === 'JOB_FOUND') {
-          // Create a job application entry for each job found
+          // Only create if we have valid company name (not "Unknown")
+          if (payload.company && payload.company !== 'Unknown' && payload.company !== 'To be determined') {
+            await prisma.jobApplication.create({
+              data: {
+                userId,
+                company: payload.company,
+                role: payload.position || payload.role || undefined,
+                stage: payload.status || payload.stage || 'INTERESTED',
+                salary: payload.salary ? parseInt(payload.salary) : undefined,
+                notes: payload.notes,
+              },
+            })
+          }
+          // Otherwise skip - incomplete data will be handled by response message
+        } else if (type === 'JOB_FOUND' && !payload.incomplete) {
+          // Only create if not marked as incomplete
           const count = payload.count || 1
           for (let i = 0; i < count; i++) {
             await prisma.jobApplication.create({
               data: {
                 userId,
-                company: 'To be determined',
-                role: 'To be determined',
+                company: payload.company || 'To be determined',
+                role: payload.role || 'To be determined',
                 stage: 'INTERESTED',
                 notes: payload.notes || `Found ${count} job${count > 1 ? 's' : ''} to apply to`,
               },
             })
           }
         }
+        // Skip incomplete JOB_FOUND events - they're just prompts
         break
 
       case 'FINANCES':
