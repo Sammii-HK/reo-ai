@@ -57,23 +57,36 @@ export async function verifyAuth(request: NextRequest) {
       email: user.email,
     })
 
-    // Ensure user exists in our database (upsert)
-    // This handles cases where user signed up directly with Supabase
+    // Ensure user exists in our database
+    // Use findFirst + create to avoid prepared statement conflicts
     try {
       const { prisma } = await import('@/lib/prisma')
-      await prisma.user.upsert({
+      const existingUser = await prisma.user.findUnique({
         where: { id: user.id },
-        update: {
-          email: user.email || undefined, // Update email if it changed
-        },
-        create: {
-          id: user.id,
-          email: user.email || '',
-        },
       })
+      
+      if (!existingUser) {
+        await prisma.user.create({
+          data: {
+            id: user.id,
+            email: user.email || '',
+          },
+        })
+      } else if (user.email && existingUser.email !== user.email) {
+        // Update email if it changed
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { email: user.email },
+        })
+      }
     } catch (dbError: any) {
-      console.error('⚠️ Failed to upsert user in database:', dbError)
-      // Continue anyway - user is authenticated, we'll create record on first event
+      // If it's a unique constraint error, user already exists (race condition)
+      if (dbError?.code === 'P2002') {
+        console.log('ℹ️ User already exists (race condition)')
+      } else {
+        console.error('⚠️ Failed to ensure user in database:', dbError?.message || dbError)
+      }
+      // Continue anyway - user is authenticated
     }
 
     return {

@@ -9,16 +9,7 @@ import { presetDomains } from '@/lib/seed'
  */
 async function ensureDomainsHandler(req: NextRequest, userId: string) {
   try {
-    // Ensure user exists first
-    await prisma.user.upsert({
-      where: { id: userId },
-      update: {},
-      create: {
-        id: userId,
-        email: '',
-      },
-    })
-
+    // User is already ensured by auth middleware
     // Check if user already has domains
     const existingDomains = await prisma.domain.findMany({
       where: { userId },

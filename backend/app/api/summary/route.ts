@@ -4,16 +4,7 @@ import { prisma } from '@/lib/prisma'
 
 async function getSummaryHandler(req: NextRequest, userId: string) {
   try {
-    // Ensure user exists first
-    await prisma.user.upsert({
-      where: { id: userId },
-      update: {},
-      create: {
-        id: userId,
-        email: '',
-      },
-    })
-
+    // User is already ensured by auth middleware
     const { searchParams } = new URL(req.url)
     const period = searchParams.get('period') || 'daily' // daily | weekly
 

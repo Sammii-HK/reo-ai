@@ -17,25 +17,7 @@ async function ingestHandler(req: NextRequest, userId: string) {
     const body = await req.json()
     const { text, source } = ingestSchema.parse(body)
 
-    // Ensure user exists in database (upsert)
-    // This handles cases where user signed up directly with Supabase but User record wasn't created
-    // Get user email from Supabase if available
-    const supabase = createApiSupabaseClient()
-    const { data: { user: supabaseUser } } = await supabase.auth.getUser(
-      req.headers.get('authorization')?.replace('Bearer ', '') || ''
-    )
-    
-    await prisma.user.upsert({
-      where: { id: userId },
-      update: {
-        email: supabaseUser?.email || undefined, // Update email if available
-      },
-      create: {
-        id: userId,
-        email: supabaseUser?.email || '',
-      },
-    })
-
+    // User is already ensured by auth middleware
     // Get user's existing domains for smart suggestions
     const userDomains = await prisma.domain.findMany({
       where: { userId },
@@ -51,23 +33,28 @@ async function ingestHandler(req: NextRequest, userId: string) {
     // Create events in database
     const createdEvents = []
     for (const event of events) {
-      // Create main Event record
-      const eventRecord = await prisma.event.create({
-        data: {
-          userId,
-          domain: event.domain,
-          type: event.type,
-          payload: event.payload,
-          source,
-          inputText: text,
-          version: 1,
-        },
-      })
+      try {
+        // Create main Event record
+        const eventRecord = await prisma.event.create({
+          data: {
+            userId,
+            domain: event.domain,
+            type: event.type,
+            payload: event.payload,
+            source,
+            inputText: text,
+            version: 1,
+          },
+        })
 
-      // Create domain-specific log entries
-      await createDomainLog(userId, event.domain, event.type, event.payload)
+        // Create domain-specific log entries
+        await createDomainLog(userId, event.domain, event.type, event.payload)
 
-      createdEvents.push(eventRecord)
+        createdEvents.push(eventRecord)
+      } catch (eventError: any) {
+        console.error(`Failed to create event for domain ${event.domain}:`, eventError)
+        // Continue with other events even if one fails
+      }
     }
 
     // CORS headers are added by withAuth wrapper
@@ -107,6 +94,12 @@ async function createDomainLog(
   payload: Record<string, any>
 ) {
   try {
+    // Ensure user exists (defensive check)
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+    if (!user) {
+      console.error(`User ${userId} not found when creating domain log`)
+      return
+    }
     switch (domain) {
       case 'WELLNESS':
         if (type === 'WATER_LOGGED') {
