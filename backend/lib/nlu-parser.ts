@@ -1,5 +1,5 @@
 // Natural Language Understanding Parser
-// Hybrid approach: Fast heuristics + LLM extraction
+// Comprehensive production-ready parser with extensive patterns and LLM fallback
 
 export interface ParsedEvent {
   domain: string
@@ -8,15 +8,65 @@ export interface ParsedEvent {
   confidence: number
 }
 
-// Fast heuristic patterns (regex-based)
+// Extract numbers with units
+function extractNumber(text: string): { value: number; unit?: string } | null {
+  const match = text.match(/(\d+(?:\.\d+)?)\s*([a-z]+)?/i)
+  if (match) {
+    return {
+      value: parseFloat(match[1]),
+      unit: match[2]?.toLowerCase(),
+    }
+  }
+  return null
+}
+
+// Extract currency amounts
+function extractCurrency(text: string): { amount: number; currency: string } | null {
+  const match = text.match(/(?:[\$£€¥]|usd|gbp|eur|jpy)\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*(?:dollars?|pounds?|euros?|yen)/i)
+  if (match) {
+    const amount = parseFloat(match[1] || match[2])
+    let currency = 'USD'
+    if (text.includes('£') || text.includes('gbp') || text.includes('pound')) currency = 'GBP'
+    else if (text.includes('€') || text.includes('eur') || text.includes('euro')) currency = 'EUR'
+    else if (text.includes('¥') || text.includes('jpy') || text.includes('yen')) currency = 'JPY'
+    return { amount, currency }
+  }
+  return null
+}
+
+// Extract URLs
+function extractUrl(text: string): string | undefined {
+  const match = text.match(/(https?:\/\/[^\s]+)/i)
+  return match ? match[1] : undefined
+}
+
+// Extract company/job info from text
+function extractJobInfo(text: string): { company?: string; role?: string; url?: string } {
+  const url = extractUrl(text)
+  
+  // Try to extract company name (common patterns)
+  const companyMatch = text.match(/(?:at|for|with|to)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/)
+  const company = companyMatch ? companyMatch[1] : undefined
+  
+  // Try to extract role/job title
+  const roleMatch = text.match(/(?:as|for|position|role|job)\s+(?:a\s+)?([a-z]+(?:\s+[a-z]+){0,3})/i)
+  const role = roleMatch ? roleMatch[1] : undefined
+  
+  return { company, role, url }
+}
+
+// Fast heuristic patterns (regex-based) - comprehensive coverage
 export function parseWithHeuristics(text: string): ParsedEvent | null {
   const lower = text.toLowerCase().trim()
+  const original = text.trim()
 
-  // Water intake patterns - more flexible
+  // ===== WELLNESS PATTERNS =====
+  
+  // Water intake - comprehensive patterns
   const waterPatterns = [
-    /(?:drank|drink|had|consumed)\s+(\d+(?:\.\d+)?)\s*(?:glasses?|cups?|liters?|l|ml|oz|ounces?|water)/i,
-    /(\d+(?:\.\d+)?)\s*(?:ml|milliliters?|oz|ounces?|cups?|glasses?|liters?|l)\s*(?:of\s+)?(?:water|h2o)/i,
-    /(?:drank|drink)\s+(\d+(?:\.\d+)?)/i, // Simple "drank 500" - assume ml if no unit
+    /(?:drank|drunk|drink|had|consumed|drank|took|downed)\s+(\d+(?:\.\d+)?)\s*(?:glasses?|cups?|liters?|litres?|l|ml|milliliters?|millilitres?|oz|ounces?|fl\s*oz|pints?|quarts?)\s*(?:of\s+)?(?:water|h2o|h₂o)?/i,
+    /(\d+(?:\.\d+)?)\s*(?:ml|milliliters?|millilitres?|oz|ounces?|fl\s*oz|cups?|glasses?|liters?|litres?|l|pints?)\s*(?:of\s+)?(?:water|h2o|h₂o)/i,
+    /(?:drank|drink|had|consumed)\s+(\d+(?:\.\d+)?)/i, // Simple "drank 500" - assume ml if > 100
   ]
   
   for (const pattern of waterPatterns) {
@@ -25,64 +75,139 @@ export function parseWithHeuristics(text: string): ParsedEvent | null {
       const amount = parseFloat(match[1])
       let unit = 'cups' // default
       
-      if (lower.includes('ml') || lower.includes('milliliter')) unit = 'ml'
-      else if (lower.includes('oz') || lower.includes('ounce')) unit = 'oz'
-      else if (lower.includes('liter') || (lower.includes('l') && !lower.includes('ml'))) unit = 'liter'
-      else if (lower.includes('cup') || lower.includes('glass')) unit = 'cups'
-      // If number is > 100 and no unit specified, assume ml
-      else if (amount > 100 && !lower.match(/(?:cup|glass|liter|oz|ounce)/)) unit = 'ml'
+      if (lower.match(/ml|milliliter|millilitre/)) unit = 'ml'
+      else if (lower.match(/oz|ounce|fl\s*oz/)) unit = 'oz'
+      else if (lower.match(/liter|litre|l(?!\w)/)) unit = 'liter'
+      else if (lower.match(/cup|glass/)) unit = 'cups'
+      else if (lower.match(/pint/)) unit = 'pints'
+      else if (lower.match(/quart/)) unit = 'quarts'
+      else if (amount > 100 && !lower.match(/(?:cup|glass|liter|litre|oz|ounce|pint|quart)/)) unit = 'ml'
       
-      return {
-        domain: 'WELLNESS',
-        type: 'WATER_LOGGED',
-        payload: { amount, unit },
-        confidence: amount > 0 && amount < 10000 ? 0.9 : 0.7, // Lower confidence for unrealistic amounts
+      if (amount > 0 && amount < 50000) { // Sanity check
+        return {
+          domain: 'WELLNESS',
+          type: 'WATER_LOGGED',
+          payload: { amount, unit },
+          confidence: amount > 0 && amount < 10000 ? 0.9 : 0.7,
+        }
       }
     }
   }
 
-  // Sleep patterns
-  const sleepMatch = lower.match(/(?:slept|got|had)\s+(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)/)
-  if (sleepMatch) {
-    const hours = parseFloat(sleepMatch[1])
-    return {
-      domain: 'WELLNESS',
-      type: 'SLEEP_LOGGED',
-      payload: { hours },
-      confidence: 0.85,
+  // Sleep patterns - comprehensive
+  const sleepPatterns = [
+    /(?:slept|got|had|rested|got\s+to\s+sleep)\s+(?:for\s+)?(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|h)/i,
+    /(?:woke\s+up|awake)\s+(?:after|at)\s+(?:(\d+):(\d+)|(\d+(?:\.\d+)?)\s*(?:hours?|hrs?))/i,
+    /(?:bedtime|went\s+to\s+bed|sleep|asleep)\s+(?:at\s+)?(\d+):(\d+)/i,
+  ]
+  
+  for (const pattern of sleepPatterns) {
+    const match = lower.match(pattern)
+    if (match) {
+      let hours: number
+      if (match[1] && match[2]) {
+        // Time format like "slept at 11:30"
+        const start = parseInt(match[1])
+        const end = parseInt(match[2])
+        hours = Math.abs(end - start)
+        if (hours > 12) hours = 24 - hours // Handle overnight
+      } else {
+        hours = parseFloat(match[1] || match[3] || match[4] || '0')
+      }
+      
+      if (hours > 0 && hours < 24) {
+        return {
+          domain: 'WELLNESS',
+          type: 'SLEEP_LOGGED',
+          payload: { hours },
+          confidence: 0.85,
+        }
+      }
     }
   }
 
-  // Workout patterns - more flexible
+  // Mood patterns - comprehensive emotional states
+  const moodPatterns = [
+    /(?:feeling|feel|am|feels|mood\s+is|feeling\s+really|feeling\s+very|feeling\s+pretty)\s+(?:really\s+|very\s+|pretty\s+|quite\s+|super\s+)?(?:happy|sad|anxious|stressed|calm|energetic|tired|excited|depressed|grateful|worried|confident|frustrated|angry|peaceful|motivated|demotivated|overwhelmed|content|satisfied|unsatisfied|proud|ashamed|guilty|relieved|disappointed|hopeful|hopeless|lonely|connected|isolated|focused|scattered|productive|lazy|inspired|burned\s+out|exhausted|refreshed|energized)/i,
+    /(?:mood|feeling)\s+(?:is|was)\s+(?:really\s+|very\s+)?(?:good|bad|great|terrible|ok|okay|fine|amazing|awful)/i,
+  ]
+  
+  for (const pattern of moodPatterns) {
+    const match = lower.match(pattern)
+    if (match) {
+      const moodText = match[0]
+      const mood = moodText.replace(/^(?:feeling|feel|am|feels|mood\s+is|feeling\s+really|feeling\s+very|feeling\s+pretty|mood|feeling)\s+(?:really\s+|very\s+|pretty\s+|quite\s+|super\s+)?/i, '').trim()
+      const value = moodToValue(mood)
+      return {
+        domain: 'WELLNESS',
+        type: 'MOOD_LOGGED',
+        payload: { mood, value },
+        confidence: 0.8,
+      }
+    }
+  }
+
+  // Nutrition patterns
+  const nutritionMatch = lower.match(/(?:ate|consumed|had|took|ingested)\s+(?:a\s+)?([a-z\s]+?)(?:\s+with\s+)?(\d+(?:\.\d+)?)?\s*(?:calories?|kcal|grams?|g|oz)/i)
+  if (nutritionMatch) {
+    const food = nutritionMatch[1].trim()
+    const calories = nutritionMatch[2] ? parseFloat(nutritionMatch[2]) : undefined
+    return {
+      domain: 'WELLNESS',
+      type: 'NUTRITION_LOGGED',
+      payload: { food, calories },
+      confidence: 0.75,
+    }
+  }
+
+  // ===== WORKOUT PATTERNS =====
+  
+  // Comprehensive workout patterns
   const workoutPatterns = [
     // "did 5 reps of squats at 100kg"
-    /(?:did|performed|completed|finished)\s+(\d+)\s*(?:reps?|repetitions?)\s+(?:of\s+)?([a-z\s]+?)\s+(?:at|with|@)\s+(\d+(?:\.\d+)?)\s*(?:kg|lbs?|pounds?|lb)/i,
-    // "squat 5x100kg" or "deadlift 3x150"
-    /([a-z]+)\s+(\d+)x(\d+(?:\.\d+)?)\s*(kg|lbs?|lb)?/i,
+    /(?:did|performed|completed|finished|did\s+a\s+set\s+of)\s+(\d+)\s*(?:reps?|repetitions?|x|times)\s+(?:of\s+)?([a-z\s]+?)\s+(?:at|with|@|using)\s+(\d+(?:\.\d+)?)\s*(?:kg|kilograms?|lbs?|pounds?|lb)/i,
+    // "squat 5x100kg" or "deadlift 3x150kg"
+    /([a-z\s]+?)\s+(\d+)\s*x\s*(\d+(?:\.\d+)?)\s*(?:kg|kilograms?|lbs?|pounds?|lb)/i,
     // "5 squats at 100kg"
-    /(\d+)\s+([a-z]+)\s+(?:at|@|with)\s+(\d+(?:\.\d+)?)\s*(kg|lbs?|lb)/i,
+    /(\d+)\s+([a-z\s]+?)\s+(?:at|@|with|using)\s+(\d+(?:\.\d+)?)\s*(?:kg|kilograms?|lbs?|pounds?|lb)/i,
     // "50 russian dead lifts" or "30 squats" - just reps, no weight
-    /(\d+)\s+([a-z\s]+?)\s*(?:deadlift|dead\s+lift|squat|bench|press|lunge|curl|extension|row|pull|push|fly|raise|crunch|sit-up|push-up|pull-up)/i,
+    /(\d+)\s+([a-z\s]+?)\s*(?:deadlift|dead\s+lift|squat|bench|press|lunge|curl|extension|row|pull|push|fly|raise|crunch|sit-up|push-up|pull-up|dip|extension|tricep|bicep|shoulder|leg|chest|back|abs|abdominal)/i,
     // "ran 5km" or "ran for 30 minutes"
-    /(?:ran|run|running)\s+(?:for\s+)?(\d+)\s*(?:km|kilometers?|miles?|minutes?|min|hours?|hrs?)/i,
+    /(?:ran|run|running|jogged|jogging|sprinted|sprinting)\s+(?:for\s+)?(\d+(?:\.\d+)?)\s*(?:km|kilometers?|miles?|mi|minutes?|min|hours?|hrs?|h)/i,
+    // "biked 10 miles" or "cycled 20km"
+    /(?:biked|biking|cycled|cycling|rode|riding)\s+(?:for\s+)?(\d+(?:\.\d+)?)\s*(?:km|kilometers?|miles?|mi|minutes?|min|hours?|hrs?)/i,
+    // "swam 500 meters" or "swimming for 20 minutes"
+    /(?:swam|swimming|swim)\s+(?:for\s+)?(\d+(?:\.\d+)?)\s*(?:meters?|metres?|m|yards?|km|kilometers?|minutes?|min|hours?|hrs?)/i,
+    // "walked 5km" or "walking for 30 minutes"
+    /(?:walked|walking|walk)\s+(?:for\s+)?(\d+(?:\.\d+)?)\s*(?:km|kilometers?|miles?|mi|steps?|minutes?|min|hours?|hrs?)/i,
+    // "yoga for 30 minutes" or "did yoga"
+    /(?:did|practiced|practised|did\s+a\s+session\s+of)\s+(?:yoga|pilates|stretching|meditation|martial\s+arts)\s+(?:for\s+)?(\d+(?:\.\d+)?)?\s*(?:minutes?|min|hours?|hrs?)?/i,
   ]
   
   for (const pattern of workoutPatterns) {
     const match = lower.match(pattern)
     if (match) {
-      // Check if it's a running/cardio pattern
-      if (lower.includes('run') || lower.includes('ran')) {
-        const value = parseFloat(match[1])
-        const unit = lower.includes('km') || lower.includes('kilometer') ? 'km' : 
-                     lower.includes('mile') ? 'miles' :
-                     lower.includes('min') || lower.includes('minute') ? 'minutes' :
-                     lower.includes('hour') || lower.includes('hr') ? 'hours' : 'km'
+      // Cardio patterns (running, biking, swimming, walking)
+      if (lower.match(/(?:run|ran|jog|bike|cycl|swim|walk)/)) {
+        const value = parseFloat(match[1] || match[2])
+        let unit = 'km'
+        if (lower.match(/km|kilometer/)) unit = 'km'
+        else if (lower.match(/mile|mi/)) unit = 'miles'
+        else if (lower.match(/minute|min|m\s+(?!km|mile)/)) unit = 'minutes'
+        else if (lower.match(/hour|hr/)) unit = 'hours'
+        else if (lower.match(/meter|metre|m\s+(?!km|mile)/)) unit = 'meters'
+        else if (lower.match(/yard/)) unit = 'yards'
+        else if (lower.match(/step/)) unit = 'steps'
+        
         return {
           domain: 'WORKOUT',
           type: 'WORKOUT_COMPLETED',
           payload: { 
-            exercise: 'running',
-            distance: unit.includes('km') || unit.includes('mile') ? value : undefined,
+            exercise: lower.match(/run|ran|jog/) ? 'running' :
+                     lower.match(/bike|cycl/) ? 'cycling' :
+                     lower.match(/swim/) ? 'swimming' :
+                     lower.match(/walk/) ? 'walking' : 'cardio',
+            distance: unit.includes('km') || unit.includes('mile') || unit.includes('meter') || unit.includes('yard') || unit === 'steps' ? value : undefined,
             duration: unit.includes('minute') || unit.includes('hour') ? value : undefined,
             unit,
           },
@@ -90,19 +215,36 @@ export function parseWithHeuristics(text: string): ParsedEvent | null {
         }
       }
       
+      // Yoga/meditation patterns
+      if (lower.match(/(?:yoga|pilates|stretching|meditation|martial)/)) {
+        const duration = match[1] ? parseFloat(match[1]) : undefined
+        return {
+          domain: 'WORKOUT',
+          type: 'WORKOUT_COMPLETED',
+          payload: {
+            exercise: lower.match(/yoga/) ? 'yoga' :
+                    lower.match(/pilates/) ? 'pilates' :
+                    lower.match(/stretching/) ? 'stretching' :
+                    lower.match(/meditation/) ? 'meditation' : 'flexibility',
+            duration,
+            unit: duration ? 'minutes' : undefined,
+          },
+          confidence: 0.75,
+        }
+      }
+      
       // Weight training patterns
       let reps: number | undefined
       let exercise: string | undefined
       let weight: number = 0
-      const unit = lower.includes('kg') ? 'kg' : 'lbs'
+      const unit = lower.includes('kg') || lower.includes('kilogram') ? 'kg' : 'lbs'
       
       // Handle "50 russian dead lifts" pattern - just reps, no weight
-      const repsOnlyMatch = lower.match(/(\d+)\s+([a-z\s]+?)\s*(?:deadlift|dead\s+lift|squat|bench|press|lunge|curl|extension|row|pull|push|fly|raise|crunch|sit-up|push-up|pull-up)/i)
-      if (repsOnlyMatch && !lower.match(/at|with|@|\d+kg|\d+lbs/i)) {
+      const repsOnlyMatch = lower.match(/(\d+)\s+([a-z\s]+?)\s*(?:deadlift|dead\s+lift|squat|bench|press|lunge|curl|extension|row|pull|push|fly|raise|crunch|sit-up|push-up|pull-up|dip|tricep|bicep|shoulder|leg|chest|back|abs|abdominal)/i)
+      if (repsOnlyMatch && !lower.match(/at|with|@|\d+\s*kg|\d+\s*lbs/i)) {
         reps = parseInt(repsOnlyMatch[1])
-        exercise = repsOnlyMatch[2].trim()
         // Extract exercise name from the full text
-        const exerciseMatch = lower.match(/(?:russian|sumo|conventional|bulgarian)?\s*(?:deadlift|dead\s+lift|squat|bench|press|lunge|curl|extension|row|pull|push|fly|raise|crunch|sit-up|push-up|pull-up)/i)
+        const exerciseMatch = lower.match(/(?:russian|sumo|conventional|bulgarian|goblet|front|back|overhead|incline|decline|flat|dumbbell|barbell|bodyweight|weighted)?\s*(?:deadlift|dead\s+lift|squat|bench|press|lunge|curl|extension|row|pull|push|fly|raise|crunch|sit-up|push-up|pull-up|dip|tricep|bicep|shoulder|leg|chest|back|abs|abdominal)/i)
         if (exerciseMatch) {
           exercise = exerciseMatch[0].trim()
         }
@@ -113,68 +255,79 @@ export function parseWithHeuristics(text: string): ParsedEvent | null {
         weight = parseFloat(match[3] || match[2] || '0')
       }
       
-      // If we have reps and exercise, log it (even without weight)
       if (exercise && reps && reps > 0) {
         return {
           domain: 'WORKOUT',
           type: weight > 0 ? 'SET_COMPLETED' : 'WORKOUT_COMPLETED',
           payload: weight > 0 
             ? { exercise: exercise.trim(), reps, weight, unit }
-            : { exercise: exercise.trim(), reps, notes: text },
+            : { exercise: exercise.trim(), reps, notes: original },
           confidence: 0.85,
         }
       }
     }
   }
 
-  // Mood patterns
-  const moodMatch = lower.match(/(?:feeling|feel|mood is|am|feels)\s+(?:really\s+|very\s+)?(?:happy|sad|anxious|stressed|calm|energetic|tired|excited|depressed|grateful|worried|confident)/i)
-  if (moodMatch) {
-    const mood = moodMatch[0].replace(/^(?:feeling|feel|mood is|am|feels)\s+(?:really\s+|very\s+)?/i, '').trim()
-    const value = moodToValue(mood)
-    return {
-      domain: 'WELLNESS',
-      type: 'MOOD_LOGGED',
-      payload: { mood, value },
-      confidence: 0.8,
-    }
-  }
-
-  // Habit completion patterns
-  const habitMatch = lower.match(/(?:completed|did|finished|checked off)\s+([a-z\s]+?)\s+(?:habit|today|off)/i)
-  if (habitMatch) {
-    const habit = habitMatch[1].trim()
-    return {
-      domain: 'HABIT',
-      type: 'HABIT_COMPLETED',
-      payload: { habit },
-      confidence: 0.75,
-    }
-  }
-
-  // Work/Productivity patterns - coding projects, building apps, working on tasks
-  // More flexible patterns to catch "worked on more like 5 apps/coding projects"
-  const workPatterns = [
-    /(?:worked|working|built|building|completed|finished|improving|improved)\s+(?:on\s+)?(?:more\s+like\s+)?(\d+)\s*(?:coding\s+)?(?:projects?|apps?|tasks?|things)/i,
-    /(\d+)\s*(?:coding\s+)?(?:projects?|apps?|tasks?)/i,
-    /(?:did|completed|finished|worked on)\s+(?:more\s+like\s+)?(\d+)\s*(?:things?|items?|tasks?|projects?|apps?)/i,
-    /(?:improving|improved|working on)\s+(?:my\s+)?(?:portfolio|code|projects?).*?(?:like\s+)?(\d+)/i,
+  // ===== HABIT PATTERNS =====
+  
+  const habitPatterns = [
+    /(?:completed|did|finished|checked\s+off|marked|accomplished)\s+(?:my\s+)?([a-z\s]+?)\s+(?:habit|today|off|task)/i,
+    /(?:habit|routine)\s+(?:of\s+)?([a-z\s]+?)\s+(?:completed|done|finished)/i,
   ]
   
-  for (const pattern of workPatterns) {
+  for (const pattern of habitPatterns) {
+    const match = lower.match(pattern)
+    if (match) {
+      const habit = match[1].trim()
+      if (habit.length > 0 && habit.length < 50) {
+        return {
+          domain: 'HABIT',
+          type: 'HABIT_COMPLETED',
+          payload: { habit },
+          confidence: 0.75,
+        }
+      }
+    }
+  }
+
+  // ===== PRODUCTIVITY PATTERNS =====
+  
+  const productivityPatterns = [
+    /(?:worked|working|built|building|completed|finished|improving|improved|did|accomplished)\s+(?:on\s+)?(?:more\s+like\s+)?(\d+)\s*(?:coding\s+)?(?:projects?|apps?|tasks?|things|items|features|bugfixes|bugs)/i,
+    /(\d+)\s*(?:coding\s+)?(?:projects?|apps?|tasks?|features|bugfixes|bugs)/i,
+    /(?:did|completed|finished|worked\s+on)\s+(?:more\s+like\s+)?(\d+)\s*(?:things?|items?|tasks?|projects?|apps?|features)/i,
+    /(?:improving|improved|working\s+on)\s+(?:my\s+)?(?:portfolio|code|projects?|app|website).*?(?:like\s+)?(\d+)/i,
+    /(?:pomodoro|focus\s+session|deep\s+work)\s+(?:for\s+)?(\d+)\s*(?:minutes?|min|hours?|hrs?)/i,
+    /(?:focused|concentrated)\s+(?:for\s+)?(\d+)\s*(?:minutes?|min|hours?|hrs?)/i,
+  ]
+  
+  for (const pattern of productivityPatterns) {
     const match = lower.match(pattern)
     if (match && (lower.includes('work') || lower.includes('build') || lower.includes('code') || 
                   lower.includes('project') || lower.includes('app') || lower.includes('task') || 
-                  lower.includes('portfolio') || lower.includes('improving'))) {
+                  lower.includes('portfolio') || lower.includes('improving') || lower.includes('pomodoro') ||
+                  lower.includes('focus'))) {
       const count = parseInt(match[1] || match[2] || match[3])
       if (count > 0) {
+        if (lower.match(/pomodoro|focus|deep\s+work|concentrated/)) {
+          return {
+            domain: 'PRODUCTIVITY',
+            type: 'FOCUS_SESSION',
+            payload: { 
+              duration: count,
+              unit: lower.match(/hour|hr/) ? 'hours' : 'minutes',
+            },
+            confidence: 0.8,
+          }
+        }
+        
         return {
           domain: 'PRODUCTIVITY',
           type: 'PROJECT_COMPLETED',
           payload: { 
             type: 'PROJECT',
             count,
-            description: text,
+            description: original,
           },
           confidence: 0.8,
         }
@@ -182,40 +335,304 @@ export function parseWithHeuristics(text: string): ParsedEvent | null {
     }
   }
 
-  // Job application patterns - more flexible
+  // ===== JOB PATTERNS =====
+  
   const jobPatterns = [
     // "applied to company X" or "submitted application for Y"
-    /(?:applied|submitted|sent)\s+(?:application|application)?\s*(?:to|for|at)\s+([a-z\s]+?)(?:\s+for|$)/i,
+    /(?:applied|submitted|sent|put\s+in)\s+(?:an?\s+)?(?:application|application\s+for)?\s*(?:to|for|at)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i,
     // "finding jobs to apply to, i have 5 i need to apply to"
-    /(?:finding|found|have|need|need to apply to)\s+(?:jobs?|positions?|applications?).*?(?:have|need|found)\s+(\d+)/i,
+    /(?:finding|found|have|need|need\s+to\s+apply\s+to|discovered)\s+(?:jobs?|positions?|applications?|opportunities?).*?(?:have|need|found)\s+(\d+)/i,
     // "i have 5 jobs to apply to" or "5 job applications"
-    /(?:have|need|found|applying to)\s+(\d+)\s+(?:jobs?|positions?|applications?)(?:\s+to\s+(?:apply|apply to))?/i,
+    /(?:have|need|found|applying\s+to|got|discovered)\s+(\d+)\s+(?:jobs?|positions?|applications?|opportunities?)(?:\s+to\s+(?:apply|apply\s+to|submit))?/i,
     // "found 5 job opportunities"
-    /(?:found|have|discovered)\s+(\d+)\s+(?:job|position|opportunit)(?:ies|y)/i,
+    /(?:found|have|discovered|saw|see|seeing)\s+(\d+)\s+(?:job|position|opportunit)(?:ies|y)/i,
+    // "found a job to apply to" or "i found a job"
+    /(?:found|discovered|saw|see|seeing|came\s+across|stumbled\s+upon)\s+(?:a\s+)?(?:job|position|opportunity|role|opening)(?:\s+to\s+(?:apply|apply\s+to|submit))?/i,
+    // "job to apply to" or "job posting"
+    /(?:job|position|opportunity|role|opening|posting)(?:\s+to\s+(?:apply|apply\s+to|submit))?/i,
+    // "interview at Company X" or "got an interview"
+    /(?:got|have|had|scheduled|booked)\s+(?:an?\s+)?(?:interview|meeting|call)\s+(?:with|at|for)\s+([A-Z][a-z]+)?/i,
+    // "received offer from Company"
+    /(?:received|got|accepted|declined)\s+(?:an?\s+)?(?:offer|job\s+offer)\s+(?:from|at)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i,
   ]
   
-  for (const pattern of jobPatterns) {
+  const isJobRelated = lower.match(/(?:job|position|opportunity|apply|application|career|hiring|role|interview|offer|rejection|rejected|accepted|declined)/)
+  
+  if (isJobRelated) {
+    for (const pattern of jobPatterns) {
+      const match = original.match(pattern)
+      if (match) {
+        const count = match[1] ? parseInt(match[1]) : undefined
+        const company = match[1] && !count ? match[1].trim() : 
+                       match[2] ? match[2].trim() : undefined
+        
+        // Extract job info
+        const jobInfo = extractJobInfo(original)
+        const url = extractUrl(original)
+        
+        if (lower.match(/interview/)) {
+          return {
+            domain: 'JOBS',
+            type: 'JOB_INTERVIEW',
+            payload: { 
+              company: company || jobInfo.company || 'Unknown',
+              role: jobInfo.role,
+              url,
+              notes: original,
+            },
+            confidence: 0.85,
+          }
+        } else if (lower.match(/offer|received|got|accepted|declined/)) {
+          const salaryMatch = original.match(/(?:salary|pay|compensation)\s+(?:of\s+)?(?:[\$£€¥]|usd|gbp|eur)?\s*(\d+(?:,\d{3})*(?:\.\d+)?)/i)
+          const salary = salaryMatch ? parseInt(salaryMatch[1].replace(/,/g, '')) : undefined
+          
+          return {
+            domain: 'JOBS',
+            type: 'JOB_OFFER',
+            payload: { 
+              company: company || jobInfo.company || 'Unknown',
+              role: jobInfo.role,
+              salary,
+              url,
+              status: lower.match(/accepted/) ? 'ACCEPTED' : lower.match(/declined/) ? 'DECLINED' : 'PENDING',
+              notes: original,
+            },
+            confidence: 0.85,
+          }
+        } else if (count && count > 0) {
+          return {
+            domain: 'JOBS',
+            type: 'JOB_FOUND',
+            payload: { count, notes: original },
+            confidence: 0.85,
+          }
+        } else if (company && company.length > 1) {
+          return {
+            domain: 'JOBS',
+            type: 'JOB_APPLIED',
+            payload: { 
+              company,
+              role: jobInfo.role,
+              status: 'APPLIED',
+              url,
+            },
+            confidence: 0.85,
+          }
+        } else if (jobInfo.company || jobInfo.role || url) {
+          return {
+            domain: 'JOBS',
+            type: 'JOB_APPLIED',
+            payload: { 
+              company: jobInfo.company || 'Unknown',
+              role: jobInfo.role || 'Unknown',
+              status: 'INTERESTED',
+              url,
+              notes: original,
+            },
+            confidence: 0.75,
+          }
+        } else {
+          return {
+            domain: 'JOBS',
+            type: 'JOB_FOUND',
+            payload: { count: 1, notes: original, incomplete: true },
+            confidence: 0.6,
+          }
+        }
+      }
+    }
+    
+    // If job-related but no pattern matched
+    return {
+      domain: 'JOBS',
+      type: 'JOB_FOUND',
+      payload: { count: 1, notes: original, incomplete: true },
+      confidence: 0.5,
+    }
+  }
+
+  // ===== FINANCE PATTERNS =====
+  
+  const financePatterns = [
+    /(?:spent|spend|paid|bought|purchased|expensed)\s+(?:[\$£€¥]|usd|gbp|eur)?\s*(\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:on|for|at)\s+([a-z\s]+)/i,
+    /(?:earned|made|received|got|income|salary)\s+(?:[\$£€¥]|usd|gbp|eur)?\s*(\d+(?:,\d{3})*(?:\.\d+)?)/i,
+    /(?:bill|subscription|payment|invoice)\s+(?:of|for)\s+(?:[\$£€¥]|usd|gbp|eur)?\s*(\d+(?:,\d{3})*(?:\.\d+)?)/i,
+  ]
+  
+  for (const pattern of financePatterns) {
     const match = lower.match(pattern)
-    if (match && (lower.includes('job') || lower.includes('apply') || lower.includes('position') || lower.includes('application'))) {
-      const count = match[1] ? parseInt(match[1]) : undefined
-      const company = match[1] && !count ? match[1].trim() : undefined
+    if (match) {
+      const currency = extractCurrency(original)
+      const amount = currency?.amount || parseFloat((match[1] || match[2] || '').replace(/,/g, ''))
+      const currencyCode = currency?.currency || 'USD'
       
-      if (count && count > 0) {
-        // Multiple jobs found/need to apply to
+      if (lower.match(/spent|spend|paid|bought|purchased|expensed|bill|subscription|payment|invoice/)) {
+        const category = match[2] || match[1] || 'Other'
         return {
-          domain: 'JOBS',
-          type: 'JOB_FOUND',
-          payload: { count, notes: text },
+          domain: 'FINANCES',
+          type: 'EXPENSE_LOGGED',
+          payload: { 
+            amount,
+            currency: currencyCode,
+            category: category.trim(),
+            notes: original,
+          },
+          confidence: 0.85,
+        }
+      } else if (lower.match(/earned|made|received|got|income|salary/)) {
+        return {
+          domain: 'FINANCES',
+          type: 'INCOME_LOGGED',
+          payload: { 
+            amount,
+            currency: currencyCode,
+            notes: original,
+          },
+          confidence: 0.85,
+        }
+      }
+    }
+  }
+
+  // ===== LEARNING PATTERNS =====
+  
+  const learningPatterns = [
+    /(?:started|began|starting)\s+(?:a\s+)?(?:course|class|tutorial|video|book|article|podcast)\s+(?:on|about|called)\s+(?:["'])?([^"']+?)(?:["'])?/i,
+    /(?:finished|completed|read|finished\s+reading)\s+(?:a\s+)?(?:course|class|tutorial|book|article|chapter|section|podcast)\s+(?:on|about|called)\s+(?:["'])?([^"']+?)(?:["'])?/i,
+    /(?:read|reading)\s+(\d+)\s*(?:pages?|chapters?|sections?)\s+(?:of\s+)?(?:["'])?([^"']+?)(?:["'])?/i,
+    /(?:learned|learning|studied|studying)\s+(?:about|how\s+to)\s+(?:["'])?([^"']+?)(?:["'])?/i,
+  ]
+  
+  for (const pattern of learningPatterns) {
+    const match = lower.match(pattern)
+    if (match) {
+      const title = match[1] || match[2] || 'Untitled'
+      const pages = match[1] ? parseInt(match[1]) : undefined
+      
+      let type = 'COURSE'
+      if (lower.match(/book|read|reading|chapter|pages/)) type = 'BOOK'
+      else if (lower.match(/article|blog|post/)) type = 'ARTICLE'
+      else if (lower.match(/video|tutorial|youtube/)) type = 'VIDEO'
+      else if (lower.match(/podcast/)) type = 'PODCAST'
+      
+      if (lower.match(/started|began|starting/)) {
+        return {
+          domain: 'LEARNING',
+          type: 'COURSE_STARTED',
+          payload: { 
+            type,
+            title: title.trim(),
+            progress: 0,
+          },
           confidence: 0.8,
         }
-      } else if (company) {
-        // Single job application
+      } else {
         return {
-          domain: 'JOBS',
-          type: 'JOB_APPLIED',
-          payload: { company, status: 'APPLIED' },
+          domain: 'LEARNING',
+          type: 'BOOK_READ',
+          payload: { 
+            type,
+            title: title.trim(),
+            progress: pages ? pages : 100,
+            pages,
+          },
           confidence: 0.8,
         }
+      }
+    }
+  }
+
+  // ===== HEALTH PATTERNS =====
+  
+  const healthPatterns = [
+    /(?:symptom|feeling|experiencing|have|having)\s+(?:a\s+)?([a-z\s]+?)(?:pain|ache|discomfort|symptom)/i,
+    /(?:took|taking|medication|medicine|pill|tablet)\s+(?:a\s+)?([a-z\s]+?)(?:\s+for\s+)?([a-z\s]+?)?/i,
+    /(?:blood\s+pressure|bp|heart\s+rate|hr|temperature|temp|weight|pulse)\s+(?:is|was|at)\s+(\d+(?:\.\d+)?)/i,
+  ]
+  
+  for (const pattern of healthPatterns) {
+    const match = lower.match(pattern)
+    if (match) {
+      if (lower.match(/symptom|feeling|experiencing|pain|ache|discomfort/)) {
+        return {
+          domain: 'HEALTH',
+          type: 'SYMPTOM_LOGGED',
+          payload: { 
+            symptom: match[1].trim(),
+            notes: original,
+          },
+          confidence: 0.75,
+        }
+      } else if (lower.match(/medication|medicine|pill|tablet|took|taking/)) {
+        return {
+          domain: 'HEALTH',
+          type: 'MEDICATION_TAKEN',
+          payload: { 
+            medication: match[1].trim(),
+            condition: match[2]?.trim(),
+          },
+          confidence: 0.75,
+        }
+      } else if (lower.match(/blood\s+pressure|bp|heart\s+rate|hr|temperature|temp|weight|pulse/)) {
+        const value = parseFloat(match[1])
+        let unit = 'unknown'
+        if (lower.match(/blood\s+pressure|bp/)) unit = 'mmHg'
+        else if (lower.match(/heart\s+rate|hr|pulse/)) unit = 'bpm'
+        else if (lower.match(/temperature|temp/)) unit = '°C'
+        else if (lower.match(/weight/)) unit = 'kg'
+        
+        return {
+          domain: 'HEALTH',
+          type: 'VITAL_LOGGED',
+          payload: { 
+            type: lower.match(/blood\s+pressure|bp/) ? 'blood_pressure' :
+                   lower.match(/heart\s+rate|hr|pulse/) ? 'heart_rate' :
+                   lower.match(/temperature|temp/) ? 'temperature' : 'weight',
+            value,
+            unit,
+          },
+          confidence: 0.8,
+        }
+      }
+    }
+  }
+
+  // ===== SOBRIETY PATTERNS =====
+  
+  if (lower.match(/(?:sober|sobriety|clean|relapse|craving|urge|day\s+\d+)/)) {
+    const dayMatch = lower.match(/(?:day\s+)?(\d+)/)
+    const days = dayMatch ? parseInt(dayMatch[1]) : undefined
+    const status = lower.match(/relapse|relapsed/) ? 'relapsed' :
+                   lower.match(/craving|urge/) ? 'craving' : 'sober'
+    const craving = lower.match(/craving|urge/) ? 
+                    (lower.match(/strong|intense|very/) ? 8 : 5) : undefined
+    
+    return {
+      domain: 'SOBRIETY',
+      type: 'SOBRIETY_LOGGED',
+      payload: { 
+        status,
+        days,
+        craving,
+        notes: original,
+      },
+      confidence: 0.8,
+    }
+  }
+
+  // ===== ROUTINE PATTERNS =====
+  
+  if (lower.match(/(?:routine|checklist|checked|completed|done)\s+(?:my\s+)?([a-z\s]+?)\s+(?:routine|checklist)/i)) {
+    const match = lower.match(/(?:routine|checklist|checked|completed|done)\s+(?:my\s+)?([a-z\s]+?)\s+(?:routine|checklist)/i)
+    if (match) {
+      return {
+        domain: 'ROUTINE',
+        type: 'ROUTINE_CHECKED',
+        payload: { 
+          routine: match[1].trim(),
+          status: 'completed',
+        },
+        confidence: 0.75,
       }
     }
   }
@@ -231,17 +648,54 @@ function moodToValue(mood: string): number {
     calm: 7,
     confident: 8,
     energetic: 7,
+    peaceful: 8,
+    motivated: 8,
+    inspired: 9,
+    content: 7,
+    satisfied: 7,
+    proud: 8,
+    relieved: 7,
+    hopeful: 8,
+    connected: 8,
+    focused: 7,
+    productive: 8,
+    refreshed: 8,
+    energized: 8,
     tired: 4,
     sad: 3,
     anxious: 4,
     stressed: 3,
     worried: 4,
     depressed: 2,
+    frustrated: 3,
+    angry: 2,
+    overwhelmed: 3,
+    demotivated: 3,
+    unsatisfied: 4,
+    ashamed: 2,
+    guilty: 3,
+    disappointed: 3,
+    hopeless: 2,
+    lonely: 3,
+    isolated: 3,
+    scattered: 4,
+    lazy: 4,
+    'burned out': 2,
+    exhausted: 2,
+    terrible: 1,
+    awful: 1,
+    bad: 3,
+    ok: 5,
+    okay: 5,
+    fine: 5,
+    good: 7,
+    great: 8,
+    amazing: 9,
   }
   return moodMap[mood.toLowerCase()] || 5
 }
 
-// LLM-based parsing (fallback when heuristics fail)
+// Enhanced LLM-based parsing with comprehensive prompt
 export async function parseWithLLM(
   text: string, 
   openaiKey?: string,
@@ -266,7 +720,7 @@ export async function parseWithLLM(
         messages: [
           {
             role: 'system',
-            content: `You are a natural language parser for a life tracking app. Extract structured data from user input.
+            content: `You are an expert natural language parser for a comprehensive life tracking app. Extract structured data from user input with maximum accuracy.
 
 Return JSON only with this exact structure:
 {
@@ -279,23 +733,73 @@ Return JSON only with this exact structure:
 
 Existing domains: ${domainList}
 
-Domains and types:
-- WELLNESS: WATER_LOGGED, SLEEP_LOGGED, MOOD_LOGGED, NUTRITION_LOGGED
-- WORKOUT: SET_COMPLETED, WORKOUT_COMPLETED
-- HABIT: HABIT_COMPLETED
-- JOBS: JOB_APPLIED, JOB_INTERVIEW, JOB_OFFER
-- FINANCES: EXPENSE_LOGGED, INCOME_LOGGED
-- LEARNING: COURSE_STARTED, COURSE_COMPLETED, BOOK_READ
-- PRODUCTIVITY: TASK_COMPLETED, POMODORO_COMPLETED, PROJECT_COMPLETED
-- HEALTH: SYMPTOM_LOGGED, MEDICATION_TAKEN, VITAL_LOGGED
-- SOBRIETY: SOBRIETY_LOGGED
-- ROUTINE: ROUTINE_CHECKED
+COMPREHENSIVE DOMAIN AND TYPE SPECIFICATIONS:
 
-If the input doesn't fit any existing domain but is clearly trackable, set domain to null and provide suggestedCategory with a name and reason. Examples:
-- "worked on 3 coding projects" → suggestedCategory: { "name": "PROJECTS", "reason": "tracking coding projects and development work" }
-- "had 2 meetings today" → suggestedCategory: { "name": "WORK", "reason": "tracking work activities and meetings" }
+WELLNESS:
+- WATER_LOGGED: { amount: number, unit: "ml"|"cups"|"oz"|"liters"|"pints" }
+- SLEEP_LOGGED: { hours: number }
+- MOOD_LOGGED: { mood: string, value: number (1-10) }
+- NUTRITION_LOGGED: { food: string, calories?: number }
 
-If you can parse it into an existing domain, return domain and type. If not, return suggestedCategory.`,
+WORKOUT:
+- SET_COMPLETED: { exercise: string, reps: number, weight: number, unit: "kg"|"lbs" }
+- WORKOUT_COMPLETED: { exercise: string, reps?: number, distance?: number, duration?: number, unit: string }
+
+HABIT:
+- HABIT_COMPLETED: { habit: string }
+
+JOBS:
+- JOB_APPLIED: { company: string, role?: string, status: "APPLIED"|"INTERESTED", url?: string, salary?: number }
+- JOB_FOUND: { count: number, incomplete?: boolean, notes?: string }
+- JOB_INTERVIEW: { company: string, role?: string, url?: string, notes?: string }
+- JOB_OFFER: { company: string, role?: string, salary?: number, status: "PENDING"|"ACCEPTED"|"DECLINED", url?: string }
+
+FINANCES:
+- EXPENSE_LOGGED: { amount: number, currency: "USD"|"GBP"|"EUR"|"JPY", category: string, notes?: string }
+- INCOME_LOGGED: { amount: number, currency: "USD"|"GBP"|"EUR"|"JPY", notes?: string }
+
+LEARNING:
+- COURSE_STARTED: { type: "COURSE"|"BOOK"|"VIDEO"|"ARTICLE"|"PODCAST", title: string, progress: number }
+- COURSE_COMPLETED: { type: string, title: string, progress: 100 }
+- BOOK_READ: { type: "BOOK", title: string, pages?: number, progress?: number }
+
+PRODUCTIVITY:
+- TASK_COMPLETED: { type: string, count?: number, description?: string }
+- PROJECT_COMPLETED: { type: "PROJECT", count: number, description?: string }
+- FOCUS_SESSION: { duration: number, unit: "minutes"|"hours" }
+- POMODORO_COMPLETED: { duration: 25, unit: "minutes" }
+
+HEALTH:
+- SYMPTOM_LOGGED: { symptom: string, notes?: string }
+- MEDICATION_TAKEN: { medication: string, condition?: string }
+- VITAL_LOGGED: { type: "blood_pressure"|"heart_rate"|"temperature"|"weight", value: number, unit: string }
+
+SOBRIETY:
+- SOBRIETY_LOGGED: { status: "sober"|"craving"|"relapsed", days?: number, craving?: number (1-10), notes?: string }
+
+ROUTINE:
+- ROUTINE_CHECKED: { routine: string, status: "completed"|"partial" }
+
+EXTRACTION RULES:
+1. Extract ALL numbers, units, dates, URLs, company names, job titles from the text
+2. For JOBS: Extract company names, job titles, URLs, salary amounts. If incomplete, set incomplete: true
+3. For FINANCES: Extract currency symbols/words and amounts. Default to USD if unspecified
+4. For WORKOUT: Extract exercise names, reps, weights, distances, durations
+5. For WELLNESS: Extract amounts and units (convert to standard units)
+6. Parse dates and times when mentioned ("yesterday", "today", "last week")
+
+IMPORTANT:
+- When user mentions jobs but doesn't provide details, return domain: "JOBS", type: "JOB_FOUND", payload: { incomplete: true }
+- Do NOT categorize vague job mentions as PRODUCTIVITY
+- Extract URLs from job postings and include in payload
+- If input doesn't fit any domain but is trackable, return suggestedCategory
+- Confidence should reflect how certain you are (0.9+ for clear matches, 0.6-0.8 for partial, <0.6 for unsure)
+
+Examples:
+- "i found a job to apply to" → { domain: "JOBS", type: "JOB_FOUND", payload: { incomplete: true, count: 1 }, confidence: 0.7 }
+- "applied to Google for software engineer role" → { domain: "JOBS", type: "JOB_APPLIED", payload: { company: "Google", role: "software engineer", status: "APPLIED" }, confidence: 0.9 }
+- "found a job posting at https://example.com/job" → { domain: "JOBS", type: "JOB_FOUND", payload: { incomplete: true, url: "https://example.com/job" }, confidence: 0.8 }
+- "spent $50 on groceries" → { domain: "FINANCES", type: "EXPENSE_LOGGED", payload: { amount: 50, currency: "USD", category: "groceries" }, confidence: 0.9 } }`,
           },
           {
             role: 'user',
@@ -303,7 +807,7 @@ If you can parse it into an existing domain, return domain and type. If not, ret
           },
         ],
         response_format: { type: 'json_object' },
-        temperature: 0.3,
+        temperature: 0.2, // Lower temperature for more consistent parsing
       }),
     })
 
@@ -330,6 +834,23 @@ If you can parse it into an existing domain, return domain and type. If not, ret
     // If it parsed into an existing domain
     if (parsed.domain && parsed.type && parsed.payload) {
       const event = parsed as ParsedEvent
+      
+      // Handle incomplete job events
+      if (event.domain === 'JOBS' && event.payload?.incomplete) {
+        const urlMatch = text.match(/(https?:\/\/[^\s]+)/i)
+        if (urlMatch) {
+          return {
+            events: [],
+            response: `Great! I found a job link: ${urlMatch[1]}\n\nI can help track this job. Can you tell me:\n• Company name\n• Job title/role\n\nOr I can try to extract details from the link.`,
+          }
+        } else {
+          return {
+            events: [],
+            response: `I'd love to help you track this job! Can you share:\n• The company name\n• The job title/role\n• A link to the job posting (if you have one)\n\nI can use the link to automatically fill in details like company, title, and location.`,
+          }
+        }
+      }
+      
       return {
         events: [event],
         response: generateConfirmation(event),
@@ -352,14 +873,33 @@ export async function parseInput(
   // Try heuristics first (fast)
   const heuristicResult = parseWithHeuristics(text)
 
-  if (heuristicResult && heuristicResult.confidence > 0.7) {
-    return {
-      events: [heuristicResult],
-      response: generateConfirmation(heuristicResult),
+  if (heuristicResult) {
+    // Check if job event is incomplete
+    if (heuristicResult.domain === 'JOBS' && heuristicResult.payload?.incomplete) {
+      const urlMatch = text.match(/(https?:\/\/[^\s]+)/i)
+      if (urlMatch) {
+        return {
+          events: [],
+          response: `Great! I found a job link: ${urlMatch[1]}\n\nI can help track this job. Can you tell me:\n• Company name\n• Job title/role\n\nOr I can try to extract details from the link.`,
+        }
+      } else {
+        return {
+          events: [],
+          response: `I'd love to help you track this job! Can you share:\n• The company name\n• The job title/role\n• A link to the job posting (if you have one)\n\nI can use the link to automatically fill in details like company, title, and location.`,
+        }
+      }
     }
+    
+    if (heuristicResult.confidence > 0.7) {
+      return {
+        events: [heuristicResult],
+        response: generateConfirmation(heuristicResult),
+      }
+    }
+    // Lower confidence heuristic - still use it but may trigger LLM
   }
 
-  // Fallback to LLM if heuristics fail
+  // Fallback to LLM if heuristics fail or confidence is low
   if (openaiKey) {
     const llmResult = await parseWithLLM(text, openaiKey, existingDomains)
     if (llmResult) {
@@ -380,7 +920,15 @@ export async function parseInput(
   // Try to extract partial information and ask for clarification
   const lower = text.toLowerCase()
   
-  if (lower.match(/(?:drank|drink|water|hydrated|liquid)/)) {
+  // Check for job-related keywords FIRST (before work/productivity)
+  if (lower.match(/(?:job|position|opportunity|apply|application|career|hiring|role|interview|offer)/)) {
+    const urlMatch = text.match(/(https?:\/\/[^\s]+)/i)
+    if (urlMatch) {
+      response = `Great! I found a job link. I can help track this. What's the company name and role? Or paste the job posting link and I'll try to extract the details.`
+    } else {
+      response = `I'd love to help you track this job! Can you share:\n• The company name\n• The job title/role\n• A link to the job posting (if you have one)\n\nI can use the link to automatically fill in details like company, title, and location.`
+    }
+  } else if (lower.match(/(?:drank|drink|water|hydrated|liquid)/)) {
     response = "I heard something about water! How much did you drink? (e.g., '2 cups' or '500ml')"
   } else if (lower.match(/(?:worked|work|building|built|project|app|code)/)) {
     response = "Sounds like you did some work! What did you work on? (e.g., '3 coding projects' or 'built 2 apps')"
@@ -395,7 +943,7 @@ export async function parseInput(
   } else if (suggestedCategory) {
     response = `I couldn't categorize that. Would you like to create a "${suggestedCategory.name}" category? This sounds like it could track ${suggestedCategory.reason}.`
   } else {
-    response = "I'm not sure how to track that. Could you give me more details? For example:\n• \"drank 2 cups of water\"\n• \"did 5 squats at 100kg\"\n• \"worked on 3 projects\"\n• \"slept 7 hours\""
+    response = "I'm not sure how to track that. Could you give me more details? For example:\n• \"drank 2 cups of water\"\n• \"did 5 squats at 100kg\"\n• \"worked on 3 projects\"\n• \"found a job to apply to\"\n• \"slept 7 hours\""
   }
 
   return {
@@ -463,9 +1011,11 @@ function generateConfirmation(event: ParsedEvent): string {
       return `${emoji} Nice! Logged ${event.payload.reps} reps of ${event.payload.exercise} at ${event.payload.weight}${event.payload.unit}.`
     case 'WORKOUT_COMPLETED':
       if (event.payload.distance) {
-        return `${emoji} Great run! Logged ${event.payload.distance} ${event.payload.unit}.`
+        return `${emoji} Great workout! Logged ${event.payload.distance} ${event.payload.unit} of ${event.payload.exercise}.`
       } else if (event.payload.duration) {
-        return `${emoji} Good workout! Logged ${event.payload.duration} ${event.payload.unit} of running.`
+        return `${emoji} Good workout! Logged ${event.payload.duration} ${event.payload.unit} of ${event.payload.exercise}.`
+      } else if (event.payload.reps) {
+        return `${emoji} Logged ${event.payload.reps} reps of ${event.payload.exercise}.`
       }
       return `${emoji} Logged your workout.`
     case 'MOOD_LOGGED':
@@ -473,14 +1023,46 @@ function generateConfirmation(event: ParsedEvent): string {
     case 'HABIT_COMPLETED':
       return `${emoji} Marked '${event.payload.habit}' as complete. Keep it up!`
     case 'JOB_APPLIED':
-      return `${emoji} Logged job application to ${event.payload.company}. Good luck!`
+      const company = event.payload.company || 'Unknown company'
+      const role = event.payload.role || event.payload.position || ''
+      return `${emoji} Logged job application${role ? ` for ${role}` : ''} at ${company}. Good luck!`
+    case 'JOB_FOUND':
+      if (event.payload?.incomplete) {
+        return `${emoji} I can help you track this job! Please share the company name, role, and a link if you have one.`
+      }
+      return `${emoji} Logged ${event.payload.count || 1} job${(event.payload.count || 1) > 1 ? 's' : ''} found.`
+    case 'JOB_INTERVIEW':
+      return `${emoji} Logged interview${event.payload.role ? ` for ${event.payload.role}` : ''} at ${event.payload.company}. Good luck!`
+    case 'JOB_OFFER':
+      return `${emoji} ${event.payload.status === 'ACCEPTED' ? 'Congratulations!' : event.payload.status === 'DECLINED' ? 'Noted.' : 'Logged offer'} from ${event.payload.company}${event.payload.salary ? ` (${event.payload.salary})` : ''}.`
+    case 'EXPENSE_LOGGED':
+      return `${emoji} Logged expense of ${event.payload.currency || 'USD'} ${event.payload.amount}${event.payload.category ? ` for ${event.payload.category}` : ''}.`
+    case 'INCOME_LOGGED':
+      return `${emoji} Logged income of ${event.payload.currency || 'USD'} ${event.payload.amount}.`
     case 'TASK_COMPLETED':
     case 'PROJECT_COMPLETED':
       const count = event.payload.count ? `${event.payload.count} ` : ''
       const type = event.payload.type || 'tasks'
       return `${emoji} Nice work! Logged ${count}${type}.`
+    case 'FOCUS_SESSION':
+      return `${emoji} Great focus session! Logged ${event.payload.duration} ${event.payload.unit} of deep work.`
+    case 'COURSE_STARTED':
+      return `${emoji} Started ${event.payload.type.toLowerCase()}: ${event.payload.title}. Keep learning!`
+    case 'BOOK_READ':
+    case 'COURSE_COMPLETED':
+      return `${emoji} ${event.payload.type === 'BOOK' ? 'Finished reading' : 'Completed'} ${event.payload.title}${event.payload.pages ? ` (${event.payload.pages} pages)` : ''}. Well done!`
+    case 'SYMPTOM_LOGGED':
+      return `${emoji} Logged symptom: ${event.payload.symptom}. Feel better soon!`
+    case 'MEDICATION_TAKEN':
+      return `${emoji} Logged medication: ${event.payload.medication}${event.payload.condition ? ` for ${event.payload.condition}` : ''}.`
+    case 'VITAL_LOGGED':
+      return `${emoji} Logged ${event.payload.type}: ${event.payload.value} ${event.payload.unit}.`
+    case 'SOBRIETY_LOGGED':
+      const days = event.payload.days ? ` (Day ${event.payload.days})` : ''
+      return `${emoji} ${event.payload.status === 'sober' ? `Great job staying sober${days}!` : event.payload.status === 'craving' ? `Hang in there${days}. You've got this!` : 'Noted. Take care of yourself.'}`
+    case 'ROUTINE_CHECKED':
+      return `${emoji} Marked ${event.payload.routine} routine as ${event.payload.status}.`
     default:
       return `${emoji} Got it! I've logged that for you.`
   }
 }
-
