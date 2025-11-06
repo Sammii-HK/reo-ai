@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withAuth } from '@/lib/auth'
-import { parseInput } from '@/lib/nlu-parser'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 
@@ -15,6 +14,13 @@ async function ingestAudioHandler(req: NextRequest, userId: string) {
         { status: 400 }
       )
     }
+
+    // Get user's domains for LLM context
+    const userDomains = await prisma.domain.findMany({
+      where: { userId },
+      select: { name: true },
+    })
+    const domainNames = userDomains.map(d => d.name)
 
     // Convert audio to base64 or use OpenAI Whisper API
     const openaiKey = process.env.OPENAI_API_KEY
@@ -67,8 +73,10 @@ async function ingestAudioHandler(req: NextRequest, userId: string) {
       )
     }
 
-    // Parse the transcribed text using the same NLU pipeline
-    const { events, response } = await parseInput(text, openaiKey)
+    // Parse the transcribed text using LLM-first parser
+    const { parseInput } = await import('@/lib/nlu-parser')
+    const parseResult = await parseInput(text, openaiKey, domainNames)
+    const { events, response } = parseResult
 
     // Create events in database
     const createdEvents = []

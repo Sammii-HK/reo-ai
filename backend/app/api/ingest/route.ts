@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withAuth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { parseInput } from '@/lib/nlu-parser'
 import { createApiSupabaseClient } from '@/lib/supabase'
 import { z } from 'zod'
 
@@ -25,8 +24,9 @@ async function ingestHandler(req: NextRequest, userId: string) {
     })
     const domainNames = userDomains.map(d => d.name)
 
-    // Parse the input
+    // Parse the input using LLM-first parser
     const openaiKey = process.env.OPENAI_API_KEY
+    const { parseInput } = await import('@/lib/nlu-parser')
     const parseResult = await parseInput(text, openaiKey, domainNames)
     const { events, response, suggestedCategory } = parseResult
 
