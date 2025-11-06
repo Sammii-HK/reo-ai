@@ -309,7 +309,7 @@ INSTRUCTIONS (Use the comprehensive context above to guide your decisions):
     - **JOBS**: company and role must NOT be "Unknown", "To be determined", timestamps, dates, or raw input
     - **GENERAL**: Reject timestamps/dates in text fields, reject "Unknown"/"To be determined", reject empty required fields
     - If validation fails, return empty events array and ask clarifying question
-13. **HABIT STORAGE**: ALWAYS store habit name in `meta.habit` field, NOT in habitId or other fields
+13. **HABIT STORAGE**: ALWAYS store habit name in \`meta.habit\` field, NOT in habitId or other fields
 14. **TIMESTAMP DETECTION**: If you detect timestamp patterns (ISO 8601, dates) in habit names or other text fields, REJECT and ask for clarification
 
 Return JSON only with this exact structure:
