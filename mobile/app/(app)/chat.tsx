@@ -111,7 +111,14 @@ export default function ChatScreen() {
 
     try {
       console.log('📤 Attempting to ingest:', inputText.trim())
-      const result = await apiClient.ingest(inputText.trim())
+      // Send last 3 messages as context for follow-up messages
+      const recentMessages = messages
+        .slice(-6) // Last 6 messages (3 user + 3 bot pairs)
+        .filter(msg => msg.isUser || msg.text.includes('workout') || msg.text.includes('exercise') || msg.text.includes('kg') || msg.text.includes('reps'))
+        .slice(-3) // Last 3 relevant messages
+        .map(msg => ({ text: msg.text, isUser: msg.isUser }))
+      
+      const result = await apiClient.ingest(inputText.trim(), recentMessages)
       console.log('✅ Ingest successful:', result)
       
       let responseText = result.response || 'Got it!'

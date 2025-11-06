@@ -135,8 +135,8 @@ class ApiClient {
   }
 
   // Ingestion endpoint (for conversational input)
-  async ingest(text: string) {
-    console.log('📤 Sending ingest request:', { text, url: `${this.baseUrl}/api/ingest`, hasToken: !!this.accessToken })
+  async ingest(text: string, context?: Array<{ text: string; isUser: boolean }>) {
+    console.log('📤 Sending ingest request:', { text, url: `${this.baseUrl}/api/ingest`, hasToken: !!this.accessToken, hasContext: !!context })
     return this.request<{
       success: boolean
       events: any[]
@@ -145,7 +145,7 @@ class ApiClient {
       suggestedCategory?: { name: string; reason: string }
     }>('/api/ingest', {
       method: 'POST',
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, context }),
     })
   }
 

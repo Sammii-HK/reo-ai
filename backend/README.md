@@ -56,10 +56,10 @@ npm run build:local
 - `NEXT_PUBLIC_SUPABASE_URL` - Supabase project URL
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Supabase anon key
 - `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (for backend)
+- `OPENAI_API_KEY` - **Required** - For LLM-based natural language parsing (get from https://platform.openai.com/api-keys)
 - `JWT_SECRET` - Random secret (generate with `openssl rand -base64 32`)
 
 **Optional (for later):**
-- `OPENAI_API_KEY` - For NLU parsing
 - `RESEND_API_KEY` - For email summaries
 - `STRIPE_SECRET_KEY` - For billing
 

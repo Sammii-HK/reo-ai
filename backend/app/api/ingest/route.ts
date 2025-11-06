@@ -8,6 +8,10 @@ import { z } from 'zod'
 const ingestSchema = z.object({
   text: z.string().min(1).max(5000),
   source: z.enum(['CHAT', 'VOICE', 'API', 'IMPORT']).default('CHAT'),
+  context: z.array(z.object({
+    text: z.string(),
+    isUser: z.boolean(),
+  })).optional(), // Recent conversation history for context
 })
 
 // Note: OPTIONS is handled by withAuth wrapper, no need for separate handler
@@ -15,7 +19,7 @@ const ingestSchema = z.object({
 async function ingestHandler(req: NextRequest, userId: string) {
   try {
     const body = await req.json()
-    const { text, source } = ingestSchema.parse(body)
+    const { text, source, context } = ingestSchema.parse(body)
 
     // User is already ensured by auth middleware
     // Get user's existing domains for smart suggestions (with retry)
@@ -27,10 +31,37 @@ async function ingestHandler(req: NextRequest, userId: string) {
     )
     const domainNames = userDomains.map(d => d.name)
 
-    // Parse the input using LLM-first parser
+    // Get recent events for context (especially for follow-up messages like "5kg" or "i applied")
+    let recentContext: any[] = []
+    if (!context || context.length === 0) {
+      // Fetch recent events from last 10 minutes to provide context
+      const recentEvents = await retryQuery(() =>
+        prisma.event.findMany({
+          where: {
+            userId,
+            ts: {
+              gte: new Date(Date.now() - 10 * 60 * 1000), // Last 10 minutes
+            },
+          },
+          orderBy: { ts: 'desc' },
+          take: 5, // Last 5 events (for better context)
+        })
+      )
+      recentContext = recentEvents.map(e => ({
+        text: e.inputText || '',
+        isUser: true,
+        domain: e.domain,
+        type: e.type,
+        payload: e.payload,
+      }))
+    } else {
+      recentContext = context
+    }
+
+    // Parse the input using LLM-first parser with context
     const openaiKey = process.env.OPENAI_API_KEY
     const { parseInput } = await import('@/lib/nlu-parser')
-    const parseResult = await parseInput(text, openaiKey, domainNames)
+    const parseResult = await parseInput(text, openaiKey, domainNames, recentContext)
     const { events, response, suggestedCategory } = parseResult
 
     // Create events in database (skip incomplete ones - they're just prompts)
