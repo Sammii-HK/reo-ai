@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withAuth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { retryQuery } from '@/lib/prisma-helper'
 import { createApiSupabaseClient } from '@/lib/supabase'
 import { z } from 'zod'
 
@@ -17,11 +18,13 @@ async function ingestHandler(req: NextRequest, userId: string) {
     const { text, source } = ingestSchema.parse(body)
 
     // User is already ensured by auth middleware
-    // Get user's existing domains for smart suggestions
-    const userDomains = await prisma.domain.findMany({
-      where: { userId },
-      select: { name: true },
-    })
+    // Get user's existing domains for smart suggestions (with retry)
+    const userDomains = await retryQuery(() =>
+      prisma.domain.findMany({
+        where: { userId },
+        select: { name: true },
+      })
+    )
     const domainNames = userDomains.map(d => d.name)
 
     // Parse the input using LLM-first parser
@@ -39,18 +42,20 @@ async function ingestHandler(req: NextRequest, userId: string) {
           continue
         }
 
-        // Create main Event record
-        const eventRecord = await prisma.event.create({
-          data: {
-            userId,
-            domain: event.domain,
-            type: event.type,
-            payload: event.payload,
-            source,
-            inputText: text,
-            version: 1,
-          },
-        })
+        // Create main Event record (with retry)
+        const eventRecord = await retryQuery(() =>
+          prisma.event.create({
+            data: {
+              userId,
+              domain: event.domain,
+              type: event.type,
+              payload: event.payload,
+              source,
+              inputText: text,
+              version: 1,
+            },
+          })
+        )
 
         // Create domain-specific log entries
         await createDomainLog(userId, event.domain, event.type, event.payload)
@@ -99,8 +104,10 @@ async function createDomainLog(
   payload: Record<string, any>
 ) {
   try {
-    // Ensure user exists (defensive check)
-    const user = await prisma.user.findUnique({ where: { id: userId } })
+    // Ensure user exists (defensive check with retry)
+    const user = await retryQuery(() =>
+      prisma.user.findUnique({ where: { id: userId } })
+    )
     if (!user) {
       console.error(`User ${userId} not found when creating domain log`)
       return
@@ -108,60 +115,70 @@ async function createDomainLog(
     switch (domain) {
       case 'WELLNESS':
         if (type === 'WATER_LOGGED') {
-          await prisma.wellnessLog.create({
-            data: {
-              userId,
-              kind: 'WATER',
-              value: payload.amount,
-              unit: payload.unit,
-              meta: payload,
-            },
-          })
+          await retryQuery(() =>
+            prisma.wellnessLog.create({
+              data: {
+                userId,
+                kind: 'WATER',
+                value: payload.amount,
+                unit: payload.unit,
+                meta: payload,
+              },
+            })
+          )
         } else if (type === 'SLEEP_LOGGED') {
-          await prisma.wellnessLog.create({
-            data: {
-              userId,
-              kind: 'SLEEP',
-              value: payload.hours,
-              unit: 'hours',
-              meta: payload,
-            },
-          })
+          await retryQuery(() =>
+            prisma.wellnessLog.create({
+              data: {
+                userId,
+                kind: 'SLEEP',
+                value: payload.hours,
+                unit: 'hours',
+                meta: payload,
+              },
+            })
+          )
         } else if (type === 'MOOD_LOGGED') {
-          await prisma.wellnessLog.create({
-            data: {
-              userId,
-              kind: 'MOOD',
-              value: payload.value,
-              meta: { mood: payload.mood, ...payload },
-            },
-          })
+          await retryQuery(() =>
+            prisma.wellnessLog.create({
+              data: {
+                userId,
+                kind: 'MOOD',
+                value: payload.value,
+                meta: { mood: payload.mood, ...payload },
+              },
+            })
+          )
         }
         break
 
       case 'WORKOUT':
         if (type === 'SET_COMPLETED') {
-          await prisma.workoutSet.create({
-            data: {
-              userId,
-              exercise: payload.exercise,
-              weightKg: payload.unit === 'kg' ? payload.weight : payload.weight * 0.453592,
-              reps: payload.reps,
-              meta: payload,
-            },
-          })
+          await retryQuery(() =>
+            prisma.workoutSet.create({
+              data: {
+                userId,
+                exercise: payload.exercise,
+                weightKg: payload.unit === 'kg' ? payload.weight : payload.weight * 0.453592,
+                reps: payload.reps,
+                meta: payload,
+              },
+            })
+          )
         }
         break
 
       case 'HABIT':
         if (type === 'HABIT_COMPLETED') {
-          await prisma.habitLog.create({
-            data: {
-              userId,
-              habitId: payload.habitId,
-              meta: { habit: payload.habit, ...payload },
-            },
-          })
+          await retryQuery(() =>
+            prisma.habitLog.create({
+              data: {
+                userId,
+                habitId: payload.habitId,
+                meta: { habit: payload.habit, ...payload },
+              },
+            })
+          )
         }
         break
 
@@ -169,31 +186,35 @@ async function createDomainLog(
         if (type === 'JOB_APPLIED') {
           // Only create if we have valid company name (not "Unknown")
           if (payload.company && payload.company !== 'Unknown' && payload.company !== 'To be determined') {
-            await prisma.jobApplication.create({
-              data: {
-                userId,
-                company: payload.company,
-                role: payload.position || payload.role || undefined,
-                stage: payload.status || payload.stage || 'INTERESTED',
-                salary: payload.salary ? parseInt(payload.salary) : undefined,
-                notes: payload.notes,
-              },
-            })
+            await retryQuery(() =>
+              prisma.jobApplication.create({
+                data: {
+                  userId,
+                  company: payload.company,
+                  role: payload.position || payload.role || undefined,
+                  stage: payload.status || payload.stage || 'INTERESTED',
+                  salary: payload.salary ? parseInt(payload.salary) : undefined,
+                  notes: payload.notes,
+                },
+              })
+            )
           }
           // Otherwise skip - incomplete data will be handled by response message
         } else if (type === 'JOB_FOUND' && !payload.incomplete) {
           // Only create if not marked as incomplete
           const count = payload.count || 1
           for (let i = 0; i < count; i++) {
-            await prisma.jobApplication.create({
-              data: {
-                userId,
-                company: payload.company || 'To be determined',
-                role: payload.role || 'To be determined',
-                stage: 'INTERESTED',
-                notes: payload.notes || `Found ${count} job${count > 1 ? 's' : ''} to apply to`,
-              },
-            })
+            await retryQuery(() =>
+              prisma.jobApplication.create({
+                data: {
+                  userId,
+                  company: payload.company || 'To be determined',
+                  role: payload.role || 'To be determined',
+                  stage: 'INTERESTED',
+                  notes: payload.notes || `Found ${count} job${count > 1 ? 's' : ''} to apply to`,
+                },
+              })
+            )
           }
         }
         // Skip incomplete JOB_FOUND events - they're just prompts
@@ -201,15 +222,17 @@ async function createDomainLog(
 
       case 'FINANCES':
         if (type === 'EXPENSE_LOGGED' || type === 'INCOME_LOGGED') {
-          await prisma.financeLog.create({
-            data: {
-              userId,
-              category: payload.category || '',
-              amount: payload.amount || 0,
-              type: payload.type || 'EXPENSE',
-              notes: payload.notes,
-            },
-          })
+          await retryQuery(() =>
+            prisma.financeLog.create({
+              data: {
+                userId,
+                category: payload.category || '',
+                amount: payload.amount || 0,
+                type: payload.type || 'EXPENSE',
+                notes: payload.notes,
+              },
+            })
+          )
         }
         break
 
@@ -223,69 +246,79 @@ async function createDomainLog(
             else if (type.startsWith('SKILL')) learningType = 'SKILL'
           }
           
-          await prisma.learningLog.create({
-            data: {
-              userId,
-              type: learningType || 'COURSE',
-              title: payload.title || 'Untitled',
-              progress: payload.progress,
-              notes: payload.notes,
-            },
-          })
+          await retryQuery(() =>
+            prisma.learningLog.create({
+              data: {
+                userId,
+                type: learningType || 'COURSE',
+                title: payload.title || 'Untitled',
+                progress: payload.progress,
+                notes: payload.notes,
+              },
+            })
+          )
         }
         break
 
       case 'PRODUCTIVITY':
         if (type === 'TASK_COMPLETED' || type === 'POMODORO_COMPLETED' || type === 'FOCUS_SESSION' || type === 'PROJECT_COMPLETED') {
-          await prisma.productivityLog.create({
-            data: {
-              userId,
-              type: payload.type || type.replace('_COMPLETED', '').replace('_SESSION', ''),
-              duration: payload.duration,
-              notes: payload.notes || payload.description,
-            },
-          })
+          await retryQuery(() =>
+            prisma.productivityLog.create({
+              data: {
+                userId,
+                type: payload.type || type.replace('_COMPLETED', '').replace('_SESSION', ''),
+                duration: payload.duration,
+                notes: payload.notes || payload.description,
+              },
+            })
+          )
         }
         break
 
       case 'HEALTH':
         if (type === 'SYMPTOM_LOGGED' || type === 'MEDICATION_TAKEN' || type === 'VITAL_LOGGED') {
-          await prisma.healthLog.create({
-            data: {
-              userId,
-              type: payload.type || type.replace('_LOGGED', '').replace('_TAKEN', ''),
-              value: payload.value,
-              unit: payload.unit,
-              notes: payload.notes,
-            },
-          })
+          await retryQuery(() =>
+            prisma.healthLog.create({
+              data: {
+                userId,
+                type: payload.type || type.replace('_LOGGED', '').replace('_TAKEN', ''),
+                value: payload.value,
+                unit: payload.unit,
+                notes: payload.notes,
+              },
+            })
+          )
         }
         break
 
       case 'SOBRIETY':
         if (type === 'SOBRIETY_LOGGED') {
-          await prisma.sobrietyLog.create({
-            data: {
-              userId,
-              substance: payload.substance,
-              status: payload.status,
-              craving: payload.craving,
-              notes: payload.notes,
-            },
-          })
+          await retryQuery(() =>
+            prisma.sobrietyLog.create({
+              data: {
+                userId,
+                substance: payload.substance,
+                status: payload.status,
+                craving: payload.craving,
+                notes: payload.notes,
+              },
+            })
+          )
         }
         break
 
       case 'ROUTINE':
         if (type === 'ROUTINE_CHECKED') {
-          await prisma.routineCheck.create({
-            data: {
-              userId,
-              routineId: payload.routineId || payload.routine_id,
-              status: payload.status,
-              notes: payload.notes,
-            },
-          })
+          await retryQuery(() =>
+            prisma.routineCheck.create({
+              data: {
+                userId,
+                routineId: payload.routineId || payload.routine_id,
+                status: payload.status,
+                notes: payload.notes,
+              },
+            })
+          )
         }
         break
 
