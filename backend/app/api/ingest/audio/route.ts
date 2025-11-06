@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withAuth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { retryQuery } from '@/lib/prisma-helper'
 import { z } from 'zod'
 
 async function ingestAudioHandler(req: NextRequest, userId: string) {
@@ -15,11 +16,13 @@ async function ingestAudioHandler(req: NextRequest, userId: string) {
       )
     }
 
-    // Get user's domains for LLM context
-    const userDomains = await prisma.domain.findMany({
-      where: { userId },
-      select: { name: true },
-    })
+    // Get user's domains for LLM context (with retry)
+    const userDomains = await retryQuery(() =>
+      prisma.domain.findMany({
+        where: { userId },
+        select: { name: true },
+      })
+    )
     const domainNames = userDomains.map(d => d.name)
 
     // Convert audio to base64 or use OpenAI Whisper API
@@ -81,17 +84,19 @@ async function ingestAudioHandler(req: NextRequest, userId: string) {
     // Create events in database
     const createdEvents = []
     for (const event of events) {
-      const eventRecord = await prisma.event.create({
-        data: {
-          userId,
-          domain: event.domain,
-          type: event.type,
-          payload: event.payload,
-          source: 'VOICE',
-          inputText: text,
-          version: 1,
-        },
-      })
+      const eventRecord = await retryQuery(() =>
+        prisma.event.create({
+          data: {
+            userId,
+            domain: event.domain,
+            type: event.type,
+            payload: event.payload,
+            source: 'VOICE',
+            inputText: text,
+            version: 1,
+          },
+        })
+      )
 
       // Create domain-specific log entries (same as text ingest)
       await createDomainLog(userId, event.domain, event.type, event.payload)
@@ -126,72 +131,84 @@ async function createDomainLog(
     switch (domain) {
       case 'WELLNESS':
         if (type === 'WATER_LOGGED') {
-          await prisma.wellnessLog.create({
-            data: {
-              userId,
-              kind: 'WATER',
-              value: payload.amount,
-              unit: payload.unit,
-              meta: payload,
-            },
-          })
+          await retryQuery(() =>
+            prisma.wellnessLog.create({
+              data: {
+                userId,
+                kind: 'WATER',
+                value: payload.amount,
+                unit: payload.unit,
+                meta: payload,
+              },
+            })
+          )
         } else if (type === 'SLEEP_LOGGED') {
-          await prisma.wellnessLog.create({
-            data: {
-              userId,
-              kind: 'SLEEP',
-              value: payload.hours,
-              unit: 'hours',
-              meta: payload,
-            },
-          })
+          await retryQuery(() =>
+            prisma.wellnessLog.create({
+              data: {
+                userId,
+                kind: 'SLEEP',
+                value: payload.hours,
+                unit: 'hours',
+                meta: payload,
+              },
+            })
+          )
         } else if (type === 'MOOD_LOGGED') {
-          await prisma.wellnessLog.create({
-            data: {
-              userId,
-              kind: 'MOOD',
-              value: payload.value,
-              meta: { mood: payload.mood, ...payload },
-            },
-          })
+          await retryQuery(() =>
+            prisma.wellnessLog.create({
+              data: {
+                userId,
+                kind: 'MOOD',
+                value: payload.value,
+                meta: { mood: payload.mood, ...payload },
+              },
+            })
+          )
         }
         break
       case 'WORKOUT':
         if (type === 'SET_COMPLETED') {
-          await prisma.workoutSet.create({
-            data: {
-              userId,
-              exercise: payload.exercise,
-              weightKg: payload.unit === 'kg' ? payload.weight : payload.weight * 0.453592,
-              reps: payload.reps,
-              meta: payload,
-            },
-          })
+          await retryQuery(() =>
+            prisma.workoutSet.create({
+              data: {
+                userId,
+                exercise: payload.exercise,
+                weightKg: payload.unit === 'kg' ? payload.weight : payload.weight * 0.453592,
+                reps: payload.reps,
+                meta: payload,
+              },
+            })
+          )
         }
         break
       case 'HABIT':
         if (type === 'HABIT_COMPLETED') {
-          await prisma.habitLog.create({
-            data: {
-              userId,
-              habitId: payload.habitId,
-              meta: { habit: payload.habit, ...payload },
-            },
-          })
+          await retryQuery(() =>
+            prisma.habitLog.create({
+              data: {
+                userId,
+                habitId: payload.habitId,
+                meta: { habit: payload.habit, ...payload },
+              },
+            })
+          )
         }
         break
       case 'JOBS':
         if (type === 'JOB_APPLIED') {
-          await prisma.jobApplication.create({
-            data: {
-              userId,
-              company: payload.company || 'Unknown',
-              role: payload.position || payload.role || 'Unknown',
-              stage: payload.status || payload.stage || 'Applied',
-              salary: payload.salary ? parseInt(payload.salary) : undefined,
-              notes: payload.notes,
-            },
-          })
+          await retryQuery(() =>
+            prisma.jobApplication.create({
+              data: {
+                userId,
+                company: payload.company || 'Unknown',
+                role: payload.position || payload.role || 'Unknown',
+                stage: payload.status || payload.stage || 'Applied',
+                salary: payload.salary ? parseInt(payload.salary) : undefined,
+                notes: payload.notes,
+              },
+            })
+          )
         }
         break
       case 'FINANCES':
