@@ -213,15 +213,17 @@ async function createDomainLog(
         break
       case 'FINANCES':
         if (type === 'EXPENSE_LOGGED' || type === 'INCOME_LOGGED') {
-          await prisma.financeLog.create({
-            data: {
-              userId,
-              category: payload.category || '',
-              amount: payload.amount || 0,
-              type: payload.type || 'EXPENSE',
-              notes: payload.notes,
-            },
-          })
+          await retryQuery(() =>
+            prisma.financeLog.create({
+              data: {
+                userId,
+                category: payload.category || '',
+                amount: payload.amount || 0,
+                type: payload.type || 'EXPENSE',
+                notes: payload.notes,
+              },
+            })
+          )
         }
         break
       case 'LEARNING':
@@ -232,65 +234,75 @@ async function createDomainLog(
             else if (type.startsWith('BOOK')) learningType = 'BOOK'
             else if (type.startsWith('SKILL')) learningType = 'SKILL'
           }
-          await prisma.learningLog.create({
-            data: {
-              userId,
-              type: learningType || 'COURSE',
-              title: payload.title || 'Untitled',
-              progress: payload.progress,
-              notes: payload.notes,
-            },
-          })
+          await retryQuery(() =>
+            prisma.learningLog.create({
+              data: {
+                userId,
+                type: learningType || 'COURSE',
+                title: payload.title || 'Untitled',
+                progress: payload.progress,
+                notes: payload.notes,
+              },
+            })
+          )
         }
         break
       case 'PRODUCTIVITY':
         if (type === 'TASK_COMPLETED' || type === 'POMODORO_COMPLETED' || type === 'FOCUS_SESSION') {
-          await prisma.productivityLog.create({
-            data: {
-              userId,
-              type: payload.type || type.replace('_COMPLETED', '').replace('_SESSION', ''),
-              duration: payload.duration,
-              notes: payload.notes,
-            },
-          })
+          await retryQuery(() =>
+            prisma.productivityLog.create({
+              data: {
+                userId,
+                type: payload.type || type.replace('_COMPLETED', '').replace('_SESSION', ''),
+                duration: payload.duration,
+                notes: payload.notes,
+              },
+            })
+          )
         }
         break
       case 'HEALTH':
         if (type === 'SYMPTOM_LOGGED' || type === 'MEDICATION_TAKEN' || type === 'VITAL_LOGGED') {
-          await prisma.healthLog.create({
-            data: {
-              userId,
-              type: payload.type || type.replace('_LOGGED', '').replace('_TAKEN', ''),
-              value: payload.value,
-              unit: payload.unit,
-              notes: payload.notes,
-            },
-          })
+          await retryQuery(() =>
+            prisma.healthLog.create({
+              data: {
+                userId,
+                type: payload.type || type.replace('_LOGGED', '').replace('_TAKEN', ''),
+                value: payload.value,
+                unit: payload.unit,
+                notes: payload.notes,
+              },
+            })
+          )
         }
         break
       case 'SOBRIETY':
         if (type === 'SOBRIETY_LOGGED') {
-          await prisma.sobrietyLog.create({
-            data: {
-              userId,
-              substance: payload.substance,
-              status: payload.status,
-              craving: payload.craving,
-              notes: payload.notes,
-            },
-          })
+          await retryQuery(() =>
+            prisma.sobrietyLog.create({
+              data: {
+                userId,
+                substance: payload.substance,
+                status: payload.status,
+                craving: payload.craving,
+                notes: payload.notes,
+              },
+            })
+          )
         }
         break
       case 'ROUTINE':
         if (type === 'ROUTINE_CHECKED') {
-          await prisma.routineCheck.create({
-            data: {
-              userId,
-              routineId: payload.routineId || payload.routine_id,
-              status: payload.status,
-              notes: payload.notes,
-            },
-          })
+          await retryQuery(() =>
+            prisma.routineCheck.create({
+              data: {
+                userId,
+                routineId: payload.routineId || payload.routine_id,
+                status: payload.status,
+                notes: payload.notes,
+              },
+            })
+          )
         }
         break
     }
