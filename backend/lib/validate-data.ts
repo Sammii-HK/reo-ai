@@ -125,6 +125,47 @@ export function validateJobEvent(payload: any): { valid: boolean; error?: string
   return { valid: true }
 }
 
+export function validateWorkoutEvent(payload: any): { valid: boolean; error?: string } {
+  const exercise = payload.exercise
+  const weight = payload.weight
+  const reps = payload.reps
+  
+  // Exercise is required
+  if (!exercise || typeof exercise !== 'string' || exercise.trim().length === 0) {
+    return { valid: false, error: 'Exercise name is required' }
+  }
+  
+  // Validate exercise name (not timestamp, not bad value)
+  const trimmedExercise = exercise.trim()
+  if (TIMESTAMP_PATTERN.test(trimmedExercise) || DATE_PATTERN.test(trimmedExercise)) {
+    return { valid: false, error: `Invalid exercise name: "${exercise}". Exercise names cannot be timestamps or dates.` }
+  }
+  
+  // If weight is provided, validate it's a number, not a timestamp
+  if (weight != null) {
+    if (typeof weight === 'string') {
+      // Check if it's a timestamp/date string
+      if (TIMESTAMP_PATTERN.test(weight) || DATE_PATTERN.test(weight) || weight.match(/^\d{4}-\d{2}-\d{2}/)) {
+        return { valid: false, error: `Invalid weight: "${weight}". Weight must be a number, not a timestamp or date.` }
+      }
+      // Try to parse as number
+      const parsed = parseFloat(weight)
+      if (isNaN(parsed)) {
+        return { valid: false, error: `Invalid weight: "${weight}". Weight must be a valid number.` }
+      }
+    } else if (typeof weight !== 'number' || isNaN(weight) || !isFinite(weight)) {
+      return { valid: false, error: `Invalid weight: "${weight}". Weight must be a valid number.` }
+    }
+  }
+  
+  // If reps is provided, validate it's a number
+  if (reps != null && (typeof reps !== 'number' || isNaN(reps) || !isFinite(reps))) {
+    return { valid: false, error: `Invalid reps: "${reps}". Reps must be a valid number.` }
+  }
+  
+  return { valid: true }
+}
+
 export function validateEvent(event: { domain: string; type: string; payload: any }): { valid: boolean; error?: string } {
   switch (event.domain) {
     case 'HABIT':
@@ -135,6 +176,11 @@ export function validateEvent(event: { domain: string; type: string; payload: an
     case 'JOBS':
       if (event.type === 'JOB_APPLIED' || event.type === 'JOB_INTERVIEW' || event.type === 'JOB_OFFER') {
         return validateJobEvent(event.payload)
+      }
+      break
+    case 'WORKOUT':
+      if (event.type === 'SET_COMPLETED') {
+        return validateWorkoutEvent(event.payload)
       }
       break
   }

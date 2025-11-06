@@ -317,8 +317,12 @@ INSTRUCTIONS (Use the comprehensive context above to guide your decisions):
     - If CONVERSATION CONTEXT shows a previous message, check if current input is a follow-up
     - Examples of follow-ups:
       * "5kg" after "did 50 russian deadlifts" → combine into complete workout with weight
+      * "can you record all of those exercises at 35kg" → Apply 35kg to ALL previously mentioned exercises
+      * "30, 20, 20, 30" after listing exercises → Map weights to exercises in order (first weight to first exercise, etc.)
       * "i applied to the v0 role" after job mention → merge with previous job context
       * "at Google" after "i want to apply" → combine company with previous intent
+    - **MULTIPLE EXERCISES + SINGLE WEIGHT**: If user says "all of those exercises at [weight]", create separate SET_COMPLETED events for each exercise with the same weight
+    - **WEIGHT LIST FORMAT**: If user provides numbers like "30, 20, 20, 30" after listing exercises, map them in order to the exercises
     - When merging, use ALL information from both previous context AND current input
     - DO NOT ask for more info if you have enough from context to create complete event
 11. For job roles: Do NOT include numeric IDs or timestamps in the role name - clean them out (e.g., "product-engineer-v0-5466858004" → "Product Engineer V0")
@@ -356,7 +360,14 @@ WELLNESS:
 - NUTRITION_LOGGED: { food: string, calories?: number }
 
 WORKOUT:
-- SET_COMPLETED: { exercise: string, reps: number, weight: number, unit: "kg"|"lbs" }
+- SET_COMPLETED: { exercise: string, reps: number, weight?: number, unit?: "kg"|"lbs", incomplete?: boolean }
+  - **CRITICAL - WEIGHT REQUIRED FOR WORKOUTS**: If weight is missing, DO NOT create event - return empty events array and ask for weight
+  - **INCOMPLETE HANDLING**: If weight missing → events: [], response: "What weight did you use for [exercise]?"
+  - **MULTIPLE EXERCISES**: If multiple exercises mentioned without weight → events: [], ask for weight for all
+  - **SINGLE WEIGHT FOR ALL**: "all of those exercises at 35kg" → Apply 35kg to all previously mentioned exercises from context
+  - **WEIGHT LIST**: "30, 20, 20, 30" after exercises → Map weights to exercises in order
+  - **INDIVIDUAL WEIGHTS**: "40 hip thrusts at 35kg, 10 good mornings at 20kg" → Different weights per exercise
+  - **WEIGHT VALIDATION**: Weight must be a NUMBER (35, 20, etc.), NEVER a timestamp, date, or string like "2025-11-06T14:10:02"
 - WORKOUT_COMPLETED: { exercise: string, reps?: number, distance?: number, duration?: number, unit: string }
 
 HABIT:
@@ -473,6 +484,23 @@ Output: {
     "confidence": 0.95
   }],
   "response": "💪 Nice! Logged 5 reps of squats at 100kg."
+}
+
+Input: "i did some exercise today, 40 hip thrusts, 10 good mornings, and 10 stiff deadlift and 10 deadlifts" (NO WEIGHT)
+Output: {
+  "events": [],  // EMPTY - weight missing, DO NOT create events
+  "response": "Great workout! 💪 What weight did you use for hip thrusts, good mornings, stiff deadlift, and deadlifts?"
+}
+
+Input: "can you record all of those exercises at 35kg" (follow-up with weight)
+Output: {
+  "events": [
+    { "domain": "WORKOUT", "type": "SET_COMPLETED", "payload": { "exercise": "hip thrusts", "reps": 40, "weight": 35, "unit": "kg" } },
+    { "domain": "WORKOUT", "type": "SET_COMPLETED", "payload": { "exercise": "good mornings", "reps": 10, "weight": 35, "unit": "kg" } },
+    { "domain": "WORKOUT", "type": "SET_COMPLETED", "payload": { "exercise": "stiff deadlift", "reps": 10, "weight": 35, "unit": "kg" } },
+    { "domain": "WORKOUT", "type": "SET_COMPLETED", "payload": { "exercise": "deadlifts", "reps": 10, "weight": 35, "unit": "kg" } }
+  ],
+  "response": "💪 Perfect! Logged all exercises at 35kg: 40 hip thrusts, 10 good mornings, 10 stiff deadlifts, and 10 deadlifts. Great workout!"
 }
 
 CRITICAL RULES:

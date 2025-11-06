@@ -1,58 +1,29 @@
 #!/bin/bash
 
-# Local Testing Script for Reo
-# Usage: ./test-local.sh
+# Get local IP address
+LOCAL_IP=$(ipconfig getifaddr en0 2>/dev/null || ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -1)
 
-set -e  # Exit on error
-
-echo "🧪 Testing Reo Locally"
-echo ""
-
-# Colors
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-# Check if .env files exist
-echo "📋 Checking environment files..."
-if [ ! -f ".env.local" ]; then
-  echo -e "${YELLOW}⚠️  Warning: .env.local not found in root${NC}"
-  echo "   Create it with MAILERLITE_API_KEY and MAILERLITE_AUDIENCE_ID"
+if [ -z "$LOCAL_IP" ]; then
+    echo "❌ Could not determine local IP address"
+    echo "Please run: ipconfig getifaddr en0 (macOS) or ipconfig (Windows)"
+    exit 1
 fi
 
-if [ ! -f "backend/.env.local" ]; then
-  echo -e "${RED}❌ Error: backend/.env.local not found${NC}"
-  echo "   Create it with DATABASE_URL, SUPABASE keys, etc."
-  echo "   See LOCAL_TESTING.md for details"
-  exit 1
-fi
-
-# Test Frontend
+echo "📍 Your local IP address: $LOCAL_IP"
 echo ""
-echo "1️⃣ Testing Frontend Build..."
-cd "$(dirname "$0")"
-if npm run build; then
-  echo -e "${GREEN}✅ Frontend build successful${NC}"
-else
-  echo -e "${RED}❌ Frontend build failed${NC}"
-  exit 1
-fi
-
-# Test Backend
+echo "Backend will be accessible at: http://$LOCAL_IP:3001"
 echo ""
-echo "2️⃣ Testing Backend Build..."
+echo "📱 Mobile App Configuration:"
+echo "Update mobile/.env.local with:"
+echo "  EXPO_PUBLIC_API_URL=http://$LOCAL_IP:3001"
+echo ""
+echo "⚠️  Important:"
+echo "1. Make sure your phone is on the same WiFi network"
+echo "2. Backend runs on port 3001 (not 3000)"
+echo "3. Use http:// not https:// for local network"
+echo ""
+read -p "Press enter to start backend on network..."
+
+# Start backend with network access
 cd backend
-if npm run build:local; then
-  echo -e "${GREEN}✅ Backend build successful${NC}"
-else
-  echo -e "${RED}❌ Backend build failed${NC}"
-  exit 1
-fi
-
-echo ""
-echo -e "${GREEN}✅ All tests passed!${NC}"
-echo ""
-echo "To run locally:"
-echo "  Frontend: npm run dev (from root)"
-echo "  Backend:  cd backend && npm run dev"
+npm run dev:network

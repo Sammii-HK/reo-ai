@@ -17,6 +17,13 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
 # Auth
 JWT_SECRET=generate_with_openssl_rand_base64_32
+
+# OpenAI (REQUIRED for NLU parsing)
+OPENAI_API_KEY=your_openai_api_key
+OPENAI_MODEL=gpt-4o-mini  # Optional: defaults to gpt-4o-mini
+
+# LLM Provider (Optional: defaults to 'openai')
+# LLM_PROVIDER=openai  # Options: openai, claude, ollama
 ```
 
 ### 2. Install Dependencies

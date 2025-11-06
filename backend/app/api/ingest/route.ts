@@ -58,10 +58,9 @@ async function ingestHandler(req: NextRequest, userId: string) {
       recentContext = context
     }
 
-    // Parse the input using LLM-first parser with context
-    const openaiKey = process.env.OPENAI_API_KEY
-    const { parseInput } = await import('@/lib/nlu-parser')
-    const parseResult = await parseInput(text, openaiKey, domainNames, recentContext)
+    // Parse the input using agent-based parser (function calling)
+    const { parseInputWithAgent } = await import('@/lib/nlu-parser-agent')
+    const parseResult = await parseInputWithAgent(text, userId)
     const { events, response, suggestedCategory, isQuery, queryType, queryDomain } = parseResult
 
     // Handle queries - fetch data from database and generate response with actual data
@@ -613,13 +612,25 @@ async function createDomainLog(
 
       case 'WORKOUT':
         if (type === 'SET_COMPLETED') {
+          // Convert weight to kg if needed
+          let weightKg: number | null = null
+          if (payload.weight != null && typeof payload.weight === 'number') {
+            if (payload.unit === 'lbs' || payload.unit === 'pounds' || payload.unit === 'lb') {
+              weightKg = payload.weight * 0.453592
+            } else {
+              // Default to kg if unit is 'kg' or undefined
+              weightKg = payload.weight
+            }
+          }
+          
           await retryQuery(() =>
             prisma.workoutSet.create({
               data: {
                 userId,
                 exercise: payload.exercise,
-                weightKg: payload.unit === 'kg' ? payload.weight : payload.weight * 0.453592,
-                reps: payload.reps,
+                weightKg: weightKg,
+                reps: payload.reps || null,
+                rpe: payload.rpe || null,
                 meta: payload,
               },
             })

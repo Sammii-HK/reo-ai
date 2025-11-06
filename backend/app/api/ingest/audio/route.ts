@@ -76,9 +76,9 @@ async function ingestAudioHandler(req: NextRequest, userId: string) {
       )
     }
 
-    // Parse the transcribed text using LLM-first parser
-    const { parseInput } = await import('@/lib/nlu-parser')
-    const parseResult = await parseInput(text, openaiKey, domainNames)
+    // Parse the transcribed text using agent-based parser
+    const { parseInputWithAgent } = await import('@/lib/nlu-parser-agent')
+    const parseResult = await parseInputWithAgent(text, userId)
     const { events, response } = parseResult
 
     // Create events in database

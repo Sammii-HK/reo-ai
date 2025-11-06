@@ -205,9 +205,33 @@ function transformToRow(item: any, domainName: string, fields: Field[]): any {
       
     case 'WORKOUT':
       row.exercise = item.exercise || item.payload?.exercise || '-'
-      row.weight = item.weightKg || item.payload?.weight || '-'
-      row.reps = item.reps || item.payload?.reps || '-'
-      row.rpe = item.rpe || item.payload?.rpe || '-'
+      // Weight: prioritize weightKg from WorkoutSet table, then payload.weight
+      // CRITICAL: Reject timestamps, dates, or non-numeric values
+      let weightValue: any = item.weightKg ?? item.payload?.weight ?? item.payload?.weightKg
+      // Validate weight is a number, not a timestamp/date string
+      if (weightValue != null) {
+        // Check if it's a timestamp string (ISO format or date-like)
+        if (typeof weightValue === 'string') {
+          // Reject if it looks like a timestamp/date
+          if (weightValue.match(/^\d{4}-\d{2}-\d{2}/) || weightValue.match(/T\d{2}:\d{2}/)) {
+            weightValue = null // Reject timestamp
+          } else {
+            // Try to parse as number
+            const parsed = parseFloat(weightValue)
+            weightValue = !isNaN(parsed) ? parsed : null
+          }
+        } else if (typeof weightValue === 'number' && !isNaN(weightValue) && isFinite(weightValue)) {
+          // Valid number
+          weightValue = weightValue
+        } else {
+          weightValue = null
+        }
+      }
+      row.weight = weightValue != null ? weightValue : '-'
+      // Reps: prioritize reps from WorkoutSet, then payload.reps
+      row.reps = item.reps ?? item.payload?.reps ?? '-'
+      // RPE: prioritize rpe from WorkoutSet, then payload.rpe
+      row.rpe = item.rpe ?? item.payload?.rpe ?? '-'
       row.date = item.ts || item.createdAt
       break
       

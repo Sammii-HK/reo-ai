@@ -321,6 +321,36 @@ User: "drank water"
 - `reps` (number, optional): Number of repetitions
 - `rpe` (number, optional): Rate of Perceived Exertion (1-10)
 
+**CRITICAL: Incomplete Workout Data Handling**
+
+**When Weight is Missing:**
+- If user mentions exercises without weight → Set incomplete: true and ask for weight
+- Example: "did 40 hip thrusts, 10 good mornings" → Ask "What weight did you use for these exercises?"
+- If multiple exercises → Ask "What weight did you use for [exercise1], [exercise2], etc.?"
+- **CRITICAL**: DO NOT create database events when incomplete: true - return empty events array and ask for clarification
+- **CRITICAL**: When weight is provided in follow-up, DO NOT create duplicate events - merge with previous incomplete events from context
+- **CRITICAL**: Weight must be a NUMBER, never a timestamp, date, or string that looks like a date
+- **CRITICAL**: Validate weight: if it looks like a timestamp (e.g., "2025-11-06T14:10:02"), reject it and ask for actual weight
+
+**Follow-Up Weight Patterns:**
+- "can you record all of those exercises at 35kg" → Apply 35kg to ALL previously mentioned exercises
+- "all of those at 35kg" → Apply 35kg to all previous exercises
+- "35kg" (after exercises) → Apply 35kg to all previous exercises
+- "30, 20, 20, 30" (after listing exercises) → Map weights in order: first weight to first exercise, etc.
+
+**Multiple Exercises with Single Weight:**
+- "40 hip thrusts, 10 good mornings, 10 deadlifts at 35kg" → All exercises at 35kg
+- Create separate SET_COMPLETED events for each exercise, all with weight: 35kg
+
+**Multiple Exercises with Individual Weights:**
+- "40 hip thrusts at 35kg, 10 good mornings at 20kg" → Different weights per exercise
+- Create separate SET_COMPLETED events with respective weights
+
+**Weight List Format:**
+- User: "40 hip thrusts, 10 good mornings, 10 deadlifts"
+- Follow-up: "30, 20, 20"
+- Result: hip thrusts at 30kg, good mornings at 20kg, deadlifts at 20kg
+
 **Storage:**
 - `workoutSet.exercise`: Exercise name
 - `workoutSet.weightKg`: Weight in kg (convert from lbs if needed)
@@ -410,18 +440,69 @@ User: "drank water"
 - Scale 1-10
 - Usually optional, but can be extracted from "felt easy" (RPE 5), "felt hard" (RPE 8), etc.
 
-**Examples:**
+**Basic Examples:**
 ```
 "did 5 squats at 100kg" → { exercise: "squats", reps: 5, weight: 100, unit: "kg" }
-"50 russian deadlifts" → { exercise: "russian deadlifts", reps: 50 } → Ask: "What weight did you use?"
+"50 russian deadlifts" → events: [], response: "What weight did you use for russian deadlifts?" (incomplete: true)
 "5kg" (follow-up to above) → { exercise: "russian deadlifts", reps: 50, weight: 5, unit: "kg" }
 "bench press: 5 reps, 80kg" → { exercise: "bench press", reps: 5, weight: 80, unit: "kg" }
 "100lbs deadlift" → { exercise: "deadlift", weight: 45.36, unit: "kg" } (100 * 0.453592)
 ```
 
 **Event Types:**
-- `SET_COMPLETED`: { exercise: string, reps: number, weight: number, unit: "kg"|"lbs" }
+- `SET_COMPLETED`: { exercise: string, reps: number, weight?: number, unit?: "kg"|"lbs", incomplete?: boolean }
+  - **If weight missing**: Set incomplete: true, return empty events array, ask for weight
+  - **Multiple exercises**: Create separate events for each exercise
+  - **Follow-up weight**: "all of those at 35kg" → Apply weight to all previous exercises
+  - **Weight list**: "30, 20, 20" → Map to exercises in order
 - `WORKOUT_COMPLETED`: { exercise: string, reps?: number, distance?: number, duration?: number }
+
+**Detailed Examples:**
+
+**Example 1: Multiple exercises without weight (should prompt - NO EVENTS CREATED)**
+```
+User: "i did some exercise today, 40 hip thrusts, 10 good mornings, and 10 stiff deadlift and 10 deadlifts"
+→ events: [] (EMPTY - incomplete data, DO NOT create events)
+→ response: "Great workout! 💪 What weight did you use for hip thrusts, good mornings, stiff deadlift, and deadlifts?"
+→ NO database entries created - wait for weight information
+```
+
+**Example 2: Follow-up with single weight for all (MERGE, DON'T DUPLICATE)**
+```
+Previous context: "i did some exercise today, 40 hip thrusts, 10 good mornings, and 10 stiff deadlift and 10 deadlifts" (no events created - incomplete)
+Current: "can you record all of those exercises at 35kg"
+→ events: [
+  { domain: "WORKOUT", type: "SET_COMPLETED", payload: { exercise: "hip thrusts", reps: 40, weight: 35, unit: "kg" } },
+  { domain: "WORKOUT", type: "SET_COMPLETED", payload: { exercise: "good mornings", reps: 10, weight: 35, unit: "kg" } },
+  { domain: "WORKOUT", type: "SET_COMPLETED", payload: { exercise: "stiff deadlift", reps: 10, weight: 35, unit: "kg" } },
+  { domain: "WORKOUT", type: "SET_COMPLETED", payload: { exercise: "deadlifts", reps: 10, weight: 35, unit: "kg" } }
+]
+→ response: "💪 Perfect! Logged all exercises at 35kg: 40 hip thrusts, 10 good mornings, 10 stiff deadlifts, and 10 deadlifts. Great workout!"
+→ CRITICAL: This creates 4 NEW events (one per exercise) - do NOT duplicate previous incomplete events
+```
+
+**Example 3: Weight list format**
+```
+Previous: "40 hip thrusts, 10 good mornings, 10 deadlifts"
+Current: "30, 20, 20"
+→ events: [
+  { domain: "WORKOUT", type: "SET_COMPLETED", payload: { exercise: "hip thrusts", reps: 40, weight: 30, unit: "kg" } },
+  { domain: "WORKOUT", type: "SET_COMPLETED", payload: { exercise: "good mornings", reps: 10, weight: 20, unit: "kg" } },
+  { domain: "WORKOUT", type: "SET_COMPLETED", payload: { exercise: "deadlifts", reps: 10, weight: 20, unit: "kg" } }
+]
+→ response: "💪 Perfect! Logged: 40 hip thrusts at 30kg, 10 good mornings at 20kg, 10 deadlifts at 20kg. Great workout!"
+```
+
+**Example 4: All exercises with single weight in one message**
+```
+User: "40 hip thrusts, 10 good mornings, 10 deadlifts at 35kg"
+→ events: [
+  { domain: "WORKOUT", type: "SET_COMPLETED", payload: { exercise: "hip thrusts", reps: 40, weight: 35, unit: "kg" } },
+  { domain: "WORKOUT", type: "SET_COMPLETED", payload: { exercise: "good mornings", reps: 10, weight: 35, unit: "kg" } },
+  { domain: "WORKOUT", type: "SET_COMPLETED", payload: { exercise: "deadlifts", reps: 10, weight: 35, unit: "kg" } }
+]
+→ response: "💪 Logged all exercises at 35kg: 40 hip thrusts, 10 good mornings, and 10 deadlifts. Keep it up!"
+```
 
 ---
 

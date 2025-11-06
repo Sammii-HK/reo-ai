@@ -57,7 +57,22 @@ export default function DomainViewScreen() {
   }
 
   const { domain, events, logs } = domainData
-  const allData = [...(logs || []), ...(events || [])].sort((a, b) => {
+  // For WORKOUT domain, prefer logs (WorkoutSet) over events to avoid duplicates
+  // Events are just the audit trail, logs are the actual data
+  let allData: any[] = []
+  if (domain.name === 'WORKOUT') {
+    // For workouts, use logs (WorkoutSet) only - events are duplicates
+    allData = [...(logs || [])]
+  } else {
+    // For other domains, combine but prioritize logs
+    const logIds = new Set((logs || []).map((l: any) => l.id))
+    // Only include events that don't have corresponding logs
+    const uniqueEvents = (events || []).filter((e: any) => !logIds.has(e.id))
+    allData = [...(logs || []), ...uniqueEvents]
+  }
+  
+  // Sort by date
+  allData.sort((a, b) => {
     const dateA = new Date(a.ts || a.createdAt || 0)
     const dateB = new Date(b.ts || b.createdAt || 0)
     return dateB.getTime() - dateA.getTime()
