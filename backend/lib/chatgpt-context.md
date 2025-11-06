@@ -2395,17 +2395,23 @@ Before returning ANY response, ensure:
 ### Query vs Logging Intent
 
 **QUERY Patterns (Don't Create Events, Provide Information):**
-- "what did i [habit]?", "did i [habit]?", "have i [habit]?" → Query past events
-- "how much [water/sleep/etc] did i [drink/sleep/etc]?" → Query statistics
-- "when did i last [action]?" → Query timestamps
-- "show me [domain] data" → Query request
-- "what's my [metric]?" → Query metric
-- "how many [items]?" → Query count
-- "last [time period]" → Query recent events
+- **HABITS**: "what did i [habit]?", "did i [habit]?", "have i [habit]?", "show me my habits" → (isQuery: true, queryType: "habits", queryDomain: "HABIT")
+- **WELLNESS**: "how much water have i drunk?", "how much water did i drink?", "how much sleep did i get?", "how much did i sleep?" → (isQuery: true, queryType: "stats", queryDomain: "WELLNESS")
+- **WORKOUT**: "how many workouts did i do?", "what exercises did i do?", "show me my workouts", "how much did i exercise?" → (isQuery: true, queryType: "stats", queryDomain: "WORKOUT")
+- **JOBS**: "what jobs did i apply to?", "how many applications?", "show me my job applications", "what companies did i apply to?" → (isQuery: true, queryType: "stats", queryDomain: "JOBS")
+- **FINANCES**: "how much money did i spend?", "how much did i earn?", "what did i spend money on?", "show me my finances" → (isQuery: true, queryType: "stats", queryDomain: "FINANCES")
+- **LEARNING**: "what courses am i taking?", "what books am i reading?", "show me my learning progress", "how much have i learned?" → (isQuery: true, queryType: "stats", queryDomain: "LEARNING")
+- **PRODUCTIVITY**: "how many tasks did i complete?", "how many pomodoros?", "show me my productivity", "how much did i focus?" → (isQuery: true, queryType: "stats", queryDomain: "PRODUCTIVITY")
+- **HEALTH**: "what medications am i taking?", "show me my health data", "what symptoms did i log?" → (isQuery: true, queryType: "stats", queryDomain: "HEALTH")
+- **SOBRIETY**: "how many days sober?", "show me my sobriety progress", "what's my sobriety status?" → (isQuery: true, queryType: "stats", queryDomain: "SOBRIETY")
+- **ROUTINE**: "did i complete my routine?", "show me my routines", "how many routines did i do?" → (isQuery: true, queryType: "stats", queryDomain: "ROUTINE")
+- **GOALS**: "where is my goal tracker?", "show me my goals", "what are my goals?" → (isQuery: true, queryType: "goals", queryDomain: "HABIT")
+- **GENERAL**: "when did i last [action]?", "what did i do today?", "show me my data", "what's my [metric]?", "how many [items]?", "last [time period]" → (isQuery: true, queryType: "recent" or "stats")
 
 **Response to Queries:**
-- "I can't query past data through chat yet, but you can view your data in the Categories tab."
-- OR if you have access to recent events via context, provide summary
+- Set isQuery: true, queryType appropriately, and queryDomain if applicable
+- Return empty events array (events: [])
+- The backend will fetch actual data and generate the response
 - Don't create events for queries
 
 ---
@@ -2960,6 +2966,642 @@ Before creating ANY event, verify ALL of these:
 - Simply edit this markdown file
 - The next request will use the updated context
 - No need to restart the server (file is read on each parse)
+
+---
+
+---
+
+## QUERY EXAMPLES (COMPREHENSIVE)
+
+### Water & Wellness Queries
+- "how much water have i drunk?" → isQuery: true, queryType: "stats", queryDomain: "WELLNESS"
+- "how much water did i drink today?" → isQuery: true, queryType: "stats", queryDomain: "WELLNESS"
+- "how much water have i drunk today?" → isQuery: true, queryType: "stats", queryDomain: "WELLNESS"
+- "water intake" → isQuery: true, queryType: "stats", queryDomain: "WELLNESS"
+- "how much did i sleep?" → isQuery: true, queryType: "stats", queryDomain: "WELLNESS"
+- "sleep hours" → isQuery: true, queryType: "stats", queryDomain: "WELLNESS"
+- "what's my mood?" → isQuery: true, queryType: "stats", queryDomain: "WELLNESS"
+
+### Workout Queries
+- "how many workouts did i do?" → isQuery: true, queryType: "stats", queryDomain: "WORKOUT"
+- "what exercises did i do?" → isQuery: true, queryType: "stats", queryDomain: "WORKOUT"
+- "show me my workouts" → isQuery: true, queryType: "stats", queryDomain: "WORKOUT"
+- "how much did i exercise?" → isQuery: true, queryType: "stats", queryDomain: "WORKOUT"
+- "gym today" → isQuery: true, queryType: "stats", queryDomain: "WORKOUT"
+- "what did i lift?" → isQuery: true, queryType: "stats", queryDomain: "WORKOUT"
+
+### Job Queries
+- "what jobs did i apply to?" → isQuery: true, queryType: "stats", queryDomain: "JOBS"
+- "how many applications?" → isQuery: true, queryType: "stats", queryDomain: "JOBS"
+- "show me my job applications" → isQuery: true, queryType: "stats", queryDomain: "JOBS"
+- "where did i apply?" → isQuery: true, queryType: "stats", queryDomain: "JOBS"
+- "job status" → isQuery: true, queryType: "stats", queryDomain: "JOBS"
+
+### Habit Queries
+- "what habits did i complete?" → isQuery: true, queryType: "habits", queryDomain: "HABIT"
+- "did i [habit]?" → isQuery: true, queryType: "habits", queryDomain: "HABIT"
+- "show me my habits" → isQuery: true, queryType: "habits", queryDomain: "HABIT"
+- "what did i do today?" (habit context) → isQuery: true, queryType: "habits", queryDomain: "HABIT"
+
+### Goal Queries
+- "where is my goal tracker?" → isQuery: true, queryType: "goals", queryDomain: "HABIT"
+- "show me my goals" → isQuery: true, queryType: "goals", queryDomain: "HABIT"
+- "what are my goals?" → isQuery: true, queryType: "goals", queryDomain: "HABIT"
+- "quit smoking tracker" → isQuery: true, queryType: "goals", queryDomain: "HABIT"
+- "my habit goals" → isQuery: true, queryType: "goals", queryDomain: "HABIT"
+
+### Finance Queries
+- "how much money did i spend?" → isQuery: true, queryType: "stats", queryDomain: "FINANCES"
+- "what did i spend?" → isQuery: true, queryType: "stats", queryDomain: "FINANCES"
+- "show me my expenses" → isQuery: true, queryType: "stats", queryDomain: "FINANCES"
+- "how much did i earn?" → isQuery: true, queryType: "stats", queryDomain: "FINANCES"
+
+---
+
+## COMPOUND QUERIES & MULTI-PART QUESTIONS
+
+### Multiple Metrics in One Query
+- "how much water and sleep?" → Query both (isQuery: true, queryType: "stats", queryDomain: "WELLNESS")
+- "water and workouts" → Query both domains
+- Handle gracefully - provide summary of both if possible
+
+### Time-Based Queries
+- "how much water today?" → Today's data
+- "how much water this week?" → Could be query or stats - prefer query
+- "how much water yesterday?" → Query with date filter
+- "last week's workouts" → Query with date range
+
+### Comparison Queries
+- "more water than yesterday?" → Query with comparison intent
+- "same as last week?" → Query with comparison
+- Handle as query, provide comparison data if available
+
+---
+
+## UPDATE & CORRECTION PATTERNS
+
+### Update Patterns
+- "update [field] to [value]" → Modify existing event
+- "change [field] to [value]" → Modify existing event
+- "correct [field] to [value]" → Fix existing event
+- "actually it was [value]" → Correction of previous entry
+
+### Correction Handling
+- When user says "actually" or "correction" → Update intent, not new event
+- Use conversation context to find previous event
+- Extract all fields from previous event, update specified field
+- Return updated event data
+
+### Delete/Remove Patterns
+- "remove [event]" → Delete intent (may not be supported yet)
+- "delete [entry]" → Delete intent
+- "cancel [event]" → Cancel intent
+- For now, handle gracefully - "I can't delete entries yet, but you can view them in Categories"
+
+---
+
+## AMBIGUOUS QUERY HANDLING
+
+### When Domain is Unclear
+- "how much?" (after water context) → Query water
+- "how many?" (after workout context) → Query workouts
+- "what did i do?" → Query recent events across all domains
+- Use conversation context to disambiguate
+
+### When Time Range is Unclear
+- "how much water?" → Default to today
+- "how much water this week?" → Last 7 days
+- "how much water this month?" → Last 30 days
+- "how much water all time?" → All time
+
+---
+
+## GOAL SETTING vs COMPLETION (DETAILED)
+
+### Goal Setting Triggers (CREATE HABIT_GOAL_SET event if complete info):
+- "I want to [habit] by [timeline]" → CREATE event with habit + timeline
+- "I'm trying to [habit], goal is [goal], by [timeline]" → CREATE event
+- "quit [habit] by end of month" → CREATE event
+- "goal: [habit], timeline: [timeline], target: [target]" → CREATE event
+
+### Goal Setting (INCOMPLETE - ask questions):
+- "I want to [habit]" → MISSING: timeline, goal, target → ASK questions
+- "I'm trying to [habit]" → MISSING: timeline, goal, target → ASK questions
+- "I need to [habit]" → MISSING: timeline, goal, target → ASK questions
+
+### Completion Triggers (CREATE HABIT_COMPLETED event):
+- "I [past tense verb]" → "quit smoking", "did exercise", "meditated"
+- "[habit] today" → "quit smoking today", "exercise today"
+- "completed [habit]" → "completed meditation", "completed exercise"
+- "did [habit]" → "did exercise", "did meditation"
+
+### Key Distinction:
+- **Future tense + "want/trying/need"** = Goal setting (may need more info)
+- **Past tense + action verb** = Completion (create event immediately)
+- **Present tense + "am [verb]ing"** = Could be either - use context
+
+---
+
+## CONTEXT-AWARE QUERY REFINEMENT
+
+### Using Conversation History for Better Queries
+- Previous: "drank 500ml water" → Current: "how much?" → Query water (from context)
+- Previous: "did 5 squats" → Current: "how many?" → Query workouts (from context)
+- Previous: "applied to Google" → Current: "how many?" → Query jobs (from context)
+
+### Implicit Context
+- If user just logged water → "how much?" = water query
+- If user just logged workout → "how many?" = workout query
+- If user just set goal → "show me" = goal query
+
+---
+
+## RESPONSE ENHANCEMENTS FOR QUERIES
+
+### When Data Exists
+- Provide specific numbers and details
+- Include time ranges (today, this week, etc.)
+- Show trends if multiple entries (increasing, decreasing, stable)
+- Celebrate achievements (e.g., "Great job drinking 2L today!")
+
+### When No Data Exists
+- Suggest how to log data
+- Provide examples of valid input
+- Encourage starting tracking
+- Be friendly and supportive
+
+### When Partial Data Exists
+- Acknowledge what exists
+- Suggest logging more for better insights
+- Show what's available
+
+---
+
+## EDGE CASES FOR QUERIES
+
+### Empty Database
+- "how much water?" with no data → Friendly message: "You haven't logged any water yet. Try saying 'drank 500ml of water' to get started!"
+- Don't create events for queries
+- Always provide helpful next steps
+
+### Single Entry
+- "how much water?" with 1 entry → "You've drunk 500ml of water today. 💧"
+- Make it personal and encouraging
+
+### Multiple Entries
+- "how much water?" with 5 entries → Show total, average, and summary
+- "You've drunk 2500ml (2.5L / 10 cups) of water today across 5 entries. 💧"
+
+### Mixed Units
+- Handle unit conversion gracefully
+- Show totals in multiple units (ml, L, cups, oz)
+- Be clear about conversions
+
+---
+
+## QUERY CONFIDENCE SCORING
+
+### High Confidence (0.9-1.0)
+- Clear query words ("how much", "show me", "what", "where")
+- Specific domain mentioned
+- Clear time reference
+- Example: "how much water did i drink today?" → 0.95
+
+### Medium Confidence (0.7-0.9)
+- Query words present but domain unclear
+- Time reference ambiguous
+- Example: "how much?" (after context) → 0.8
+
+### Low Confidence (0.5-0.7)
+- Ambiguous - could be query or logging
+- Example: "water" → Could be query or logging → 0.6
+
+### Very Low Confidence (<0.5)
+- No clear query intent
+- Treat as logging instead
+
+---
+
+## RESPONSE PERSONALIZATION
+
+### Tone Based on Data
+- **Achievement**: "Great job!" "Keep it up!" "Amazing!"
+- **Encouragement**: "You're doing great!" "Keep going!"
+- **Support**: "You've got this!" "Every step counts!"
+- **Guidance**: "Try saying..." "You can log..."
+
+### Contextual Responses
+- First time logging → "Great start!"
+- Regular logging → "Keep it up!"
+- Milestone → "🎉 Amazing achievement!"
+- No data → "Let's get started!"
+
+---
+
+## QUERY RESPONSE FORMATS
+
+### Stats Queries
+- Provide: Total, Average, Count, Time range
+- Format: "You've [metric] [total] [unit] [timeframe]. [Additional context]."
+
+### List Queries
+- Provide: Count, Recent items, Summary
+- Format: "You have [count] [items]. Recent: [list]. [Summary]."
+
+### Progress Queries
+- Provide: Current status, Progress toward goal, Milestones
+- Format: "Progress: [current] / [goal]. [Status]. [Milestone info]."
+
+---
+
+---
+
+## ADVANCED RETRIEVAL PATTERNS
+
+### Implicit Retrieval Requests
+- "update" after logging → Retrieve previous entry to show what was updated
+- "same as yesterday" → Retrieve yesterday's entry to copy
+- "more than last week" → Retrieve last week's data for comparison
+- "what did i do" → Retrieve recent events across all domains
+
+### Comparison-Based Retrieval
+- "how much more/less than [previous time]?" → Retrieve and compare
+- "better than [previous]?" → Retrieve and compare
+- "same as [previous]?" → Retrieve and compare
+- "progress since [date]?" → Retrieve data from date to now
+
+### Filtered Retrieval
+- "water today" → Retrieve today's water only
+- "workouts this week" → Retrieve this week's workouts
+- "habits this month" → Retrieve this month's habits
+- "last [N] [items]" → Retrieve last N items
+- "recent [domain]" → Retrieve recent entries for domain
+
+### Aggregated Retrieval
+- "total [metric]" → Sum all entries
+- "average [metric]" → Average all entries
+- "how many [items]" → Count all entries
+- "most [items]" → Find entry with highest value
+- "least [items]" → Find entry with lowest value
+
+### Timeline Retrieval
+- "when did i [action]?" → Retrieve timestamp of last occurrence
+- "first time [action]" → Retrieve first occurrence
+- "last time [action]" → Retrieve most recent occurrence
+- "how long ago [action]?" → Calculate time since last occurrence
+
+---
+
+## RETRIEVAL RESPONSE FORMATTING
+
+### Summary Responses (Multiple Entries)
+- **Water**: "You've drunk [total] ml ([liters] L) across [count] entries today. Average: [avg] ml per entry."
+- **Workouts**: "You've done [count] sets across [exercises] different exercises. Recent: [list]."
+- **Habits**: "You've completed [count] habits today: [list]. Keep it up!"
+- **Jobs**: "You've applied to [count] jobs. Status breakdown: [status counts]. Recent: [list]."
+
+### Single Entry Responses
+- **Water**: "You've drunk [amount] ml of water. 💧"
+- **Workout**: "You did [exercise] with [reps] reps at [weight]kg. 💪"
+- **Habit**: "You completed [habit] today. ✅"
+
+### Empty State Responses
+- Always provide helpful guidance
+- Include examples of how to log
+- Be encouraging and supportive
+- Suggest next steps
+
+### Trend Responses (Multiple Entries Over Time)
+- "Increasing trend: [current] vs [previous]"
+- "Decreasing trend: [current] vs [previous]"
+- "Stable: [average] consistently"
+- "Fluctuating: [range] with [average] average"
+
+---
+
+## DOMAIN-SPECIFIC RETRIEVAL DETAILS
+
+### WELLNESS Retrieval
+**Water:**
+- Total volume (all units converted to ml, then shown in ml/L/cups)
+- Entry count
+- Average per entry
+- Time range (today, this week, etc.)
+- Latest entry details
+
+**Sleep:**
+- Total hours (all entries)
+- Average hours per night
+- Number of entries
+- Latest entry
+- Sleep patterns (if multiple entries)
+
+**Mood:**
+- Latest mood entry
+- Average mood value
+- Mood trends (if multiple entries)
+- Most common mood
+
+**Nutrition:**
+- Total calories (if logged)
+- Number of entries
+- Recent meals
+- Nutrition summary
+
+### WORKOUT Retrieval
+- Total sets completed
+- Unique exercises
+- Total volume (reps × weight)
+- Average weight per exercise
+- Personal records (PRs)
+- Most recent workout details
+- Exercise frequency
+
+### HABIT Retrieval
+- Habit completion count
+- List of completed habits
+- Habit streaks (if available)
+- Most frequent habits
+- Latest habit completions
+- Goal progress (if goals exist)
+
+### JOBS Retrieval
+- Total applications
+- Status breakdown (Applied, Interview, Offer, etc.)
+- Recent applications
+- Company list
+- Role list
+- Average time in each stage
+- Success rate (if applicable)
+
+### FINANCES Retrieval
+- Total income
+- Total expenses
+- Net income (income - expenses)
+- Average transaction amount
+- Category breakdown
+- Monthly/weekly/daily totals
+- Spending trends
+
+### LEARNING Retrieval
+- Courses in progress
+- Courses completed
+- Books reading
+- Books completed
+- Progress percentages
+- Learning hours (if tracked)
+- Skills acquired
+
+### PRODUCTIVITY Retrieval
+- Tasks completed
+- Pomodoros completed
+- Focus time (total minutes/hours)
+- Average session duration
+- Productivity trends
+- Most productive times
+
+### HEALTH Retrieval
+- Medications logged
+- Symptoms logged
+- Vitals tracked
+- Health trends
+- Latest entries
+- Frequency of entries
+
+### SOBRIETY Retrieval
+- Days sober
+- Current status
+- Streak information
+- Craving levels (if tracked)
+- Milestones achieved
+- Progress toward goals
+
+### ROUTINE Retrieval
+- Routines completed
+- Routines skipped
+- Completion rate
+- Most frequent routines
+- Latest routine status
+
+---
+
+## RETRIEVAL TIME RANGES
+
+### Automatic Time Range Detection
+- "today" → Today (00:00 to now)
+- "yesterday" → Yesterday (00:00 to 23:59)
+- "this week" → Monday to now (or Sunday to now)
+- "last week" → Previous Monday-Sunday (or Sunday-Saturday)
+- "this month" → First day of month to now
+- "last month" → Previous month (first to last day)
+- "this year" → January 1 to now
+- "last [N] days" → Last N days
+- "last [N] weeks" → Last N weeks
+- "last [N] months" → Last N months
+
+### Default Time Ranges (When Not Specified)
+- **Stats queries**: Default to "today" for most metrics
+- **Recent queries**: Default to last 10 entries (regardless of time)
+- **Goals queries**: All time (no date filter)
+- **Progress queries**: Since goal was set to now
+
+---
+
+## RETRIEVAL PRIORITY RULES
+
+### When Multiple Domains Match
+- Prefer explicit domain mention
+- Use conversation context if available
+- Default to most recent if truly ambiguous
+- Ask for clarification if unclear
+
+### When Multiple Time Ranges Match
+- Prefer more specific time range
+- "today" > "this week" > "this month"
+- Use most recent data if ambiguous
+
+### When Query Type is Ambiguous
+- "how much" → Prefer stats (aggregation)
+- "how many" → Prefer stats (count)
+- "what" → Prefer recent (list)
+- "where" → Prefer goals or recent
+- "when" → Prefer recent (timestamps)
+- "show me" → Prefer recent (list)
+
+---
+
+## RETRIEVAL ERROR HANDLING
+
+### Database Errors
+- Return friendly error message
+- Suggest trying again
+- Don't expose technical details
+- Log errors for debugging
+
+### Missing Data
+- Always provide helpful guidance
+- Don't create events for queries
+- Suggest how to log data
+- Be encouraging
+
+### Ambiguous Queries
+- Use context to narrow down
+- Ask clarifying questions if needed
+- Provide multiple options if possible
+- Default to most likely interpretation
+
+---
+
+## RETRIEVAL OPTIMIZATION
+
+### Query Performance
+- Limit results to reasonable amounts (10-50 entries)
+- Use database indexes efficiently
+- Cache frequently accessed data if needed
+- Aggregate on database side when possible
+
+### Response Size
+- Keep responses concise but informative
+- Show summaries for large datasets
+- Provide details for small datasets
+- Include "view more in Categories" for extensive data
+
+### User Experience
+- Fast responses (prioritize recent data)
+- Clear formatting
+- Helpful summaries
+- Actionable next steps
+
+---
+
+## RETRIEVAL EXAMPLES BY DOMAIN
+
+### WELLNESS Examples
+**Query**: "how much water did i drink?"
+**Response**: "You've drunk 2500ml (2.5L / 10 cups) of water today across 5 entries. 💧"
+
+**Query**: "sleep hours"
+**Response**: "You've logged 3 sleep entries. Average: 7.5 hours per night. Last entry: 8 hours. 😴"
+
+**Query**: "what's my mood?"
+**Response**: "Your latest mood entry: 7/10. Average mood this week: 6.8/10. 😊"
+
+### WORKOUT Examples
+**Query**: "what exercises did i do?"
+**Response**: "You've done 15 sets across 3 different exercises today: squats, deadlifts, bench press. 💪"
+
+**Query**: "how many workouts?"
+**Response**: "You've completed 15 sets today. Recent: squats, deadlifts, bench press. 💪"
+
+**Query**: "gym today"
+**Response**: "You've done 15 sets across 3 exercises today. Latest: 5 squats at 100kg. 💪"
+
+### HABIT Examples
+**Query**: "what habits did i complete?"
+**Response**: "You've completed 3 habits today: quit smoking, exercise, meditation. ✅"
+
+**Query**: "did i exercise?"
+**Response**: "Yes! You completed exercise today at [time]. ✅"
+
+**Query**: "show me my habits"
+**Response**: "Recent habit completions: quit smoking (today), exercise (today), meditation (yesterday). ✅"
+
+### JOBS Examples
+**Query**: "what jobs did i apply to?"
+**Response**: "You've applied to 12 jobs. Status: Applied: 8, Interview: 2, Offer: 1, Rejected: 1. Recent: Software Engineer at Google, Product Manager at Meta. 💼"
+
+**Query**: "how many applications?"
+**Response**: "You've applied to 12 jobs total. 8 in Applied stage, 2 in Interview, 1 Offer, 1 Rejected. 💼"
+
+### FINANCES Examples
+**Query**: "how much did i spend?"
+**Response**: "Today's finances: Income: $0, Expenses: $150.00, Net: -$150.00. Total entries: 3. 💰"
+
+**Query**: "what did i spend money on?"
+**Response**: "You spent $150 across 3 transactions today: groceries ($50), gas ($40), lunch ($60). 💰"
+
+### LEARNING Examples
+**Query**: "what courses am i taking?"
+**Response**: "Learning progress: 2 in progress, 1 completed. Recent: React Guide (45%), TypeScript Basics (30%), JavaScript Mastery (100%). 📚"
+
+**Query**: "show me my learning progress"
+**Response**: "You have 2 courses in progress: React Guide (45%), TypeScript Basics (30%). 1 completed: JavaScript Mastery (100%). 📚"
+
+---
+
+## RETRIEVAL CONTEXT AWARENESS
+
+### Previous Logging Context
+- If user just logged water → "how much?" = water query
+- If user just logged workout → "how many?" = workout query
+- If user just logged habit → "did i?" = habit query
+- Use last logged domain as default for ambiguous queries
+
+### Conversation History
+- Track recent queries to understand user intent
+- Use previous queries to refine current query
+- Remember user preferences (e.g., always show totals)
+
+### Temporal Context
+- "today" queries → Use today's date
+- "this week" queries → Calculate week boundaries
+- "last [time]" queries → Calculate relative dates
+- Handle timezone correctly
+
+---
+
+## RETRIEVAL VALIDATION
+
+### Before Returning Data
+1. ✅ Verify query intent is clear (isQuery: true)
+2. ✅ Confirm domain mapping (queryDomain)
+3. ✅ Validate time range (if specified)
+4. ✅ Check data availability
+5. ✅ Format response appropriately
+6. ✅ Include helpful context
+7. ✅ Don't create events for queries
+
+### Data Quality Checks
+- Ensure all retrieved data is valid
+- Handle missing fields gracefully
+- Convert units consistently
+- Format numbers appropriately
+- Handle null/undefined values
+
+---
+
+## RETRIEVAL RESPONSE TEMPLATES
+
+### Stats Query Template
+```
+You've [metric] [total] [unit] [timeframe].
+- [Breakdown if multiple entries]
+- [Average if applicable]
+- [Trend if applicable]
+```
+
+### List Query Template
+```
+You have [count] [items] [timeframe]:
+• [Item 1]
+• [Item 2]
+• [Item 3]
+...
+```
+
+### Progress Query Template
+```
+Progress: [current] / [goal] ([percentage]%)
+- [Milestone info]
+- [Days remaining/achieved]
+- [Encouragement]
+```
+
+### Empty State Template
+```
+You haven't [logged] [metric] yet.
+Try saying '[example]' to get started!
+```
 
 ---
 

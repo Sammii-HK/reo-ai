@@ -8,6 +8,15 @@ export interface ParsedEvent {
   confidence: number
 }
 
+export interface ParseResult {
+  isQuery: boolean
+  queryType?: 'goals' | 'habits' | 'stats' | 'recent' | 'progress' | null
+  queryDomain?: string | null
+  events: ParsedEvent[]
+  response: string
+  suggestedCategory?: { name: string; reason: string } | null
+}
+
 // Extract job details from URL (helper function)
 async function extractJobFromUrl(url: string): Promise<{ company?: string; role?: string }> {
   try {
@@ -207,9 +216,10 @@ export async function parseInput(
   openaiKey?: string,
   existingDomains?: string[],
   conversationContext?: any[] // Recent messages/events for context
-): Promise<{ events: ParsedEvent[]; response: string; suggestedCategory?: { name: string; reason: string } }> {
+): Promise<ParseResult> {
   if (!openaiKey) {
     return {
+      isQuery: false,
       events: [],
       response: "I need an OpenAI API key to understand your input. Please configure it in the backend.",
     }
@@ -282,11 +292,19 @@ EXISTING DOMAINS: ${domainList}
 ${contextInfo}
 
 INSTRUCTIONS (Use the comprehensive context above to guide your decisions):
-1. Analyze the user's input carefully and extract ALL relevant information
+1. **FIRST: DETERMINE IF THIS IS A QUERY OR LOGGING REQUEST**
+   - **QUERY PATTERNS** (set isQuery: true):
+     * "where is", "show me", "what is", "how much", "how many", "when did", "did i", "have i", "what did i"
+     * "i want to see", "show my", "where's my", "what's my"
+     * Examples: "where is my goal tracker", "show me my quit smoking tracker", "what did i do today", "how much water did i drink"
+   - **LOGGING PATTERNS** (set isQuery: false):
+     * User is providing new data to log (e.g., "drank 500ml", "quit smoking today", "applied to job")
+   
 2. **DISTINGUISH INTENT vs COMPLETION**:
    - "I quit smoking" / "I stopped smoking" = COMPLETED (HABIT_COMPLETED)
    - "I want to quit smoking" / "I'm trying to quit smoking" / "I am trying to quit" = GOAL SETTING (HABIT_GOAL_SET)
-   - For goal setting, DO NOT create an event - instead return a response asking about goals, timelines, targets
+   - For goal setting with complete information: CREATE HABIT_GOAL_SET event with all provided details (habit, goal, timeline, target)
+   - For goal setting with incomplete information: DO NOT create an event - instead return a response asking for missing details (goals, timelines, targets)
 3. Map to the correct domain based on the DATABASE SCHEMA and DOMAIN SCHEMAS above
 4. Extract ALL fields required by the domain schema
 5. For URLs: Extract company from hostname, role from path segments (especially after /careers/, /jobs/, /positions/)
@@ -314,6 +332,9 @@ INSTRUCTIONS (Use the comprehensive context above to guide your decisions):
 
 Return JSON only with this exact structure:
 {
+  "isQuery": boolean, // TRUE if user is asking for information (e.g., "where is my goal", "show me my habits", "what did i do"), FALSE if logging new data
+  "queryType": "goals" | "habits" | "stats" | "recent" | "progress" | null, // If isQuery is true, specify what type of query
+  "queryDomain": "HABIT" | "WORKOUT" | "JOBS" | "WELLNESS" | "HEALTH" | "FINANCES" | "LEARNING" | "PRODUCTIVITY" | "SOBRIETY" | "ROUTINE" | null, // Domain to query if applicable
   "events": [
     {
       "domain": "WELLNESS" | "WORKOUT" | "HABIT" | "JOBS" | "FINANCES" | "LEARNING" | "PRODUCTIVITY" | "HEALTH" | "SOBRIETY" | "ROUTINE" | null,
@@ -476,6 +497,7 @@ CRITICAL RULES:
       const error = await response.text()
       console.error('OpenAI API error:', error)
       return {
+        isQuery: false,
         events: [],
         response: "I had trouble understanding that. Could you try rephrasing?",
       }
@@ -485,6 +507,7 @@ CRITICAL RULES:
     const content = data.choices[0]?.message?.content
     if (!content) {
       return {
+        isQuery: false,
         events: [],
         response: "I couldn't process that. Please try again.",
       }
@@ -523,6 +546,9 @@ CRITICAL RULES:
           // If all events were invalid, return clarifying question
           if (validatedEvents.length === 0 && (parsed.events || []).length > 0) {
             return {
+              isQuery: parsed.isQuery === true || false,
+              queryType: parsed.queryType || undefined,
+              queryDomain: parsed.queryDomain || undefined,
               events: [],
               response: "I couldn't extract valid data from that. Could you provide more details? For example: 'quit smoking', 'drank 500ml water', or 'applied to Software Engineer at Google'",
             }
@@ -531,6 +557,9 @@ CRITICAL RULES:
           parsed.events = validatedEvents
 
       return {
+        isQuery: parsed.isQuery === true,
+        queryType: parsed.queryType || undefined,
+        queryDomain: parsed.queryDomain || undefined,
         events: parsed.events || [],
         response: parsed.response || generateDefaultResponse(parsed.events || []),
         suggestedCategory: parsed.suggestedCategory || undefined,
@@ -539,6 +568,7 @@ CRITICAL RULES:
       console.error('Failed to parse LLM response:', parseError)
       console.error('Raw content:', content)
       return {
+        isQuery: false,
         events: [],
         response: "I understood something but couldn't parse it correctly. Please try rephrasing.",
       }
@@ -546,6 +576,7 @@ CRITICAL RULES:
   } catch (error: any) {
     console.error('LLM parsing error:', error)
     return {
+      isQuery: false,
       events: [],
       response: "I encountered an error processing that. Please try again.",
     }
